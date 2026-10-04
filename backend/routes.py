@@ -77,6 +77,11 @@ def submit_approval(investigation_id: str, approval: Approval, background: Backg
         raise HTTPException(409, f"investigation is {investigation.stage}, not awaiting_approval")
     if approval.intervention_id not in {i.id for i in investigation.interventions}:
         raise HTTPException(400, f"unknown intervention: {approval.intervention_id}")
+    # Only what is still on the table: replan drops interventions that were rejected or failed verification.
+    if approval.intervention_id not in {r.intervention_id for r in investigation.ranking}:
+        current = investigation.recommendation.intervention_id if investigation.recommendation else "none"
+        raise HTTPException(409, f"{approval.intervention_id} is no longer in the current ranking "
+                                 f"(current recommendation: {current})")
     if approval.decision == "rejected" and not approval.note.strip():
         raise HTTPException(422, "a rejection needs a note explaining why")
     if approval.at is None:

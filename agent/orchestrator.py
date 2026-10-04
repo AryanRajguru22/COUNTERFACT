@@ -35,6 +35,7 @@ from contracts.models import (
 )
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+MAX_ATTEMPTS = 3  # approval decisions (approve or reject) before an unresolved investigation stops in `failed`
 
 
 class Store(Protocol):
@@ -326,18 +327,43 @@ def _investigate(r: _Run) -> None:
     _recommend(r)
 
 
+def _give_up(r: _Run, reason: str) -> None:
+    """Terminal failure the agent decided on (not an engine crash): log it, then stop in `failed`."""
+    r.inv.error = reason
+    r.step("decision", reason)
+    r.stage("failed")
+
+
 def _recommend(r: _Run) -> None:
     inv = r.inv
     inv.recommendation = inv.ranking[0] if inv.ranking else None
+    if inv.recommendation is None:
+        # Never park in awaiting_approval with nothing to approve.
+        if inv.attempts:
+            _give_up(r, f"No intervention left to recommend after {inv.attempts} approval "
+                        f"{'attempt' if inv.attempts == 1 else 'attempts'} (last: {_replan_context(inv)})")
+        else:
+            _give_up(r, "No intervention to recommend: the ranking returned no candidates")
+        return
     r.think("recommendation")
-    if rec := inv.recommendation:
-        outcome = "prevents the breach" if rec.prevented else "does not prevent the breach"
-        r.step("decision", f"Recommend {rec.intervention_id} {_intervention_title(inv, rec.intervention_id)}: "
-               f"{outcome}, avoiding {rec.breach_minutes_avoided} breach minutes "
-               f"(rank {rec.rank}, score {rec.score})")
-    else:
-        r.step("decision", "No interventions left to recommend")
+    rec = inv.recommendation
+    outcome = "prevents the breach" if rec.prevented else "does not prevent the breach"
+    r.step("decision", f"Recommend {rec.intervention_id} {_intervention_title(inv, rec.intervention_id)}: "
+           f"{outcome}, avoiding {rec.breach_minutes_avoided} breach minutes "
+           f"(rank {rec.rank}, score {rec.score})")
     r.stage("awaiting_approval")
+
+
+def _replan(r: _Run, failed: VerificationResult, model: SystemModel, label: str) -> None:
+    """After a rejection or failed verification: stop at the attempt cap, otherwise re-rank and recommend."""
+    inv = r.inv
+    if inv.attempts >= MAX_ATTEMPTS:
+        _give_up(r, f"Stopped after the maximum of {MAX_ATTEMPTS} approval attempts without a verified fix "
+                    f"(last: {_replan_context(inv)})")
+        return
+    inv.ranking = r.tool("replan", failed=failed, ranking=inv.ranking, model=model, label=label)
+    r.step("tool_result", "Re-ranked: " + _ranking(inv), tool="replan")
+    _recommend(r)
 
 
 def resume_after_approval(investigation_id: str, approval: Approval, store: Store, mode: str | None = None) -> None:
@@ -365,10 +391,7 @@ def _act_on_approval(r: _Run, approval: Approval) -> None:
             intervention_id=approval.intervention_id, passed=False, stress_test_passed=False,
             checks=[VerificationCheck(name="human approval", expected="approved", observed="rejected", passed=False)],
         )
-        inv.ranking = r.tool("replan", failed=rejected, ranking=inv.ranking, model=model,
-                             label=f"Re-ranking after {approval.intervention_id} was rejected")
-        r.step("tool_result", "Re-ranked: " + _ranking(inv), tool="replan")
-        _recommend(r)
+        _replan(r, rejected, model, f"Re-ranking after {approval.intervention_id} was rejected")
         return
 
     r.stage("executing")
@@ -388,7 +411,4 @@ def _act_on_approval(r: _Run, approval: Approval) -> None:
         r.stage("resolved")
         return
     r.stage("replanning")
-    inv.ranking = r.tool("replan", failed=inv.verification, ranking=inv.ranking, model=model,
-                         label=f"Re-ranking after {inv.verification.intervention_id} failed verification")
-    r.step("tool_result", "Re-ranked: " + _ranking(inv), tool="replan")
-    _recommend(r)
+    _replan(r, inv.verification, model, f"Re-ranking after {inv.verification.intervention_id} failed verification")
