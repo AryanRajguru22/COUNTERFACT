@@ -1,0 +1,29 @@
+{
+  "payment-svc": {
+    "db.pool.max": 10,
+    "db.pool.connection_timeout_ms": 2000,
+    "payments.authorize.retry_max": 3,
+    "payments.authorize.retry_backoff_ms": 50,
+    "payments.authorize.retry_jitter": false,
+    "pods": 3
+  },
+  "payments-db": {
+    "engine": "postgres-15",
+    "max_connections": 200,
+    "instance": "db.r6g.2xlarge"
+  },
+  "settlement-reconcile": {
+    "schedule": "30 14 * * *",
+    "pool": "payment-svc/HikariPool-1",
+    "connections": 8
+  },
+  "payment-gateway": {
+    "regions": [
+      "eu-west-1",
+      "us-east-1",
+      "ap-south-1",
+      "us-west-2"
+    ],
+    "timeout_ms": 5000
+  }
+}
