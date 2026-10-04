@@ -4,6 +4,11 @@ The timeline is the fixture events (events.json) plus the first sightings that o
 telemetry: the first pool-acquire timeout log, the first retry log and the first failed request trace.
 Derived events get ids after the last fixture id, never carry a state_change, and the whole timeline
 is ordered by (t, ts, id). Deterministic: no clock, no randomness, no network.
+
+Every event is annotated in its attributes (additive, no contract change):
+- causal: it carries a state_change, so it changes a parameter of the replayable system model.
+- decoy:  it looks like a change (deploy, config, job, external notice) but changes no model parameter,
+          so it cannot move the simulation. Investigators chase these; the UI mutes them.
 """
 
 from __future__ import annotations
@@ -15,6 +20,7 @@ from data.loader import load_events, load_logs, load_traces
 
 POOL_TIMEOUT_MARKER = "Connection is not available"
 RETRY_MARKER = "Retrying"
+CHANGE_KINDS = ("deploy", "config_change", "job_start", "job_end", "external")
 
 
 def _first(rows: list[dict[str, Any]], match) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
@@ -58,4 +64,10 @@ def build_timeline(incident_id: str) -> list[Event]:
     derived = []
     for n, row in enumerate(sorted(_derived(incident_id), key=lambda r: (r["t"], r["ts"], r["kind"])), next_n):
         derived.append(Event(id=f"E-{n:03d}", **row))
-    return sorted(base + derived, key=lambda e: (e.t, e.ts, e.id))
+    return sorted((_annotate(e) for e in base + derived), key=lambda e: (e.t, e.ts, e.id))
+
+
+def _annotate(e: Event) -> Event:
+    causal = e.state_change is not None
+    return e.model_copy(update={"attributes": {**e.attributes, "causal": causal,
+                                               "decoy": not causal and e.kind in CHANGE_KINDS}})

@@ -16,9 +16,41 @@ def _by(evidence, hypothesis_id, stance):
     return [e for e in evidence if e.stance.get(hypothesis_id) == stance]
 
 
-def test_evidence_ids_are_unique_and_sequential():
+def test_evidence_ids_are_unique_and_sorted():
     _, _, evidence = _setup()
-    assert [e.id for e in evidence] == [f"EV-{n:02d}" for n in range(1, len(evidence) + 1)]
+    assert [e.id for e in evidence] == [f"EV-{n:02d}" for n in range(1, 18)]
+
+
+def test_evidence_ids_keep_the_playbook_meanings():
+    _, _, evidence = _setup()
+    ev = {e.id: e for e in evidence}
+    assert "pool.acquire accounts for" in ev["EV-01"].description
+    assert "pinned at the 10-connection cap" in ev["EV-02"].description
+    assert ev["EV-03"].kind == "config_diff"
+    assert "after settlement-reconcile starts" in ev["EV-04"].description
+    assert ev["EV-05"].stance == {"H2": "refutes"} and "Rollback" in ev["EV-05"].description
+    assert ev["EV-06"].stance == {"H2": "refutes"} and "by version" in ev["EV-06"].description
+    assert ev["EV-07"].stance == {"H3": "refutes"} and "gateway.authorize p99" in ev["EV-07"].description
+    assert ev["EV-08"].stance == {"H3": "refutes"} and "regions" in ev["EV-08"].description
+    assert ev["EV-09"].stance["H4"] == "refutes" and "CPU" in ev["EV-09"].description
+    for eid, hid in (("EV-10", "H2"), ("EV-11", "H3"), ("EV-12", "H4")):
+        assert ev[eid].stance[hid] == "supports" and ev[eid].weight <= 0.4
+
+
+def test_an_analysis_that_finds_nothing_does_not_shift_later_ids(monkeypatch):
+    from evidence import evidence as engine
+
+    before = {e.id: e for e in catalogue(INCIDENT)}
+    first_id, _ = engine.ANALYSES[0]
+    monkeypatch.setattr(engine, "ANALYSES", ((first_id, lambda d: None),) + engine.ANALYSES[1:])
+    engine._catalogue.cache_clear()
+    try:
+        after = {e.id: e for e in catalogue(INCIDENT)}
+    finally:
+        monkeypatch.undo()
+        engine._catalogue.cache_clear()
+    assert first_id not in after
+    assert after == {k: v for k, v in before.items() if k != first_id}
 
 
 def test_evidence_is_anchored_to_timeline_events_and_known_hypotheses():
@@ -75,3 +107,40 @@ def test_evidence_is_deterministic_and_callers_cannot_corrupt_the_cache():
     first[0].stance["H1"] = "refutes"
     assert catalogue(INCIDENT) == catalogue(INCIDENT)
     assert catalogue(INCIDENT)[0].stance["H1"] == "supports"
+
+
+def _llm(hid, title, mechanism):
+    from contracts.models import Hypothesis
+    return Hypothesis(id=hid, title=title, mechanism=mechanism, origin="llm", status="proposed", confidence=0.25)
+
+
+def test_llm_hypothesis_inherits_the_evidence_of_the_family_it_describes():
+    _, hypotheses, _ = _setup()
+    h1 = next(h for h in hypotheses if h.id == "H1")
+    h5 = _llm("H5", "Connection pool starvation", "The payment-svc connection pool ran out of free connections.")
+    mine, seeded = gather_evidence(INCIDENT, h5), gather_evidence(INCIDENT, h1)
+    assert [e.id for e in mine] == [e.id for e in seeded]
+    assert all(e.stance["H5"] == e.stance["H1"] for e in mine)
+    assert all(prediction_for(e, "H5") == prediction_for(e, "H1") for e in mine)
+
+
+def test_llm_hypothesis_is_scored_like_the_seed_it_matches():
+    from evidence import test_hypothesis
+    _, hypotheses, _ = _setup()
+    h2 = next(h for h in hypotheses if h.id == "H2")
+    h6 = _llm("H6", "Bad release", "A bug shipped in the latest deploy breaks payments.")
+    assert test_hypothesis(h6, gather_evidence(INCIDENT, h6)).status == "rejected"
+    assert (test_hypothesis(h6, gather_evidence(INCIDENT, h6)).confidence
+            == test_hypothesis(h2, gather_evidence(INCIDENT, h2)).confidence)
+
+
+def test_llm_hypothesis_matching_no_family_gets_no_evidence_and_stays_proposed():
+    from evidence import test_hypothesis
+    h7 = _llm("H7", "Cosmic rays", "Bit flips in memory corrupted requests.")
+    assert gather_evidence(INCIDENT, h7) == []
+    assert test_hypothesis(h7, []).status == "proposed"
+
+
+def test_llm_hypotheses_do_not_leak_into_the_shared_catalogue():
+    gather_evidence(INCIDENT, _llm("H5", "Connection pool starvation", "The pool ran out of connections."))
+    assert all("H5" not in e.stance for e in catalogue(INCIDENT))
