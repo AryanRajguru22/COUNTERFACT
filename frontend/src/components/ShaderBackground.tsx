@@ -78,6 +78,7 @@ export default function ShaderBackground() {
   const reduced = useReducedMotion();
 
   useEffect(() => {
+    // No loseContext() on cleanup: StrictMode re-runs this effect on the same canvas, and a lost context cannot be reused.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const gl = canvas.getContext("webgl");
@@ -135,10 +136,10 @@ export default function ShaderBackground() {
     let running = true;
     const tick = (now: number) => {
       draw(now);
-      canvas.style.opacity = "0.7"; // first real frame: the tab is visible and compositing, so fade the ribbons in
+      canvas.style.opacity = "0.55"; // first real frame: the tab is visible and compositing, so fade the ribbons in
       if (running && !reduced) frame = requestAnimationFrame(tick);
     };
-    if (reduced) canvas.style.opacity = "0.7"; // one still frame
+    if (reduced) canvas.style.opacity = "0.55"; // one still frame
     else frame = requestAnimationFrame(tick);
 
     const onVisibility = () => {
@@ -154,7 +155,6 @@ export default function ShaderBackground() {
       observer.disconnect();
       window.removeEventListener("mousemove", onMove);
       document.removeEventListener("visibilitychange", onVisibility);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
   }, [reduced]);
 

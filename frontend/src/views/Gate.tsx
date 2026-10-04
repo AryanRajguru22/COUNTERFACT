@@ -43,6 +43,7 @@ export default function Gate({
   const isRecommended = selected.intervention.id === recommendation?.intervention_id;
   const lastVerification = inv.verification && !inv.verification.passed ? inv.verification : null;
   const noteMissing = note.trim() === "";
+  const stopped = inv.stage === "failed";
 
   const decide = async (decision: Decision) => {
     setError(null);
@@ -84,9 +85,15 @@ export default function Gate({
               Note: “{inv.approval.note}”.{" "}
             </>
           ) : null}
-          {rows.length} option{rows.length === 1 ? "" : "s"} remain
-          {dropped.length > 0 && <> ({dropped.map((id) => `${id} ${interventionTitle(inv, id)}`).join(", ")} removed)</>}.
-          {inv.stage === "replanning" && " Re-ranking now…"}
+          {stopped ? (
+            "No approval attempts are left, so the investigation stopped without a verified fix."
+          ) : (
+            <>
+              {rows.length} option{rows.length === 1 ? "" : "s"} remain
+              {dropped.length > 0 && <> ({dropped.map((id) => `${id} ${interventionTitle(inv, id)}`).join(", ")} removed)</>}.
+              {inv.stage === "replanning" && " Re-ranking now…"}
+            </>
+          )}
         </Notice>
       )}
 
@@ -94,11 +101,11 @@ export default function Gate({
         <Panel glow="primary" className="flex flex-col justify-between gap-space-xl !p-space-xl lg:flex-row">
           <div className="flex max-w-2xl flex-col gap-space-md">
             <div className="flex flex-wrap items-center gap-space-lg">
-              <Badge tone="primary" className="!bg-primary !text-on-primary font-bold shadow-[0_0_10px_rgba(76,215,246,0.4)]">Top ranked (#{recommendation.rank})</Badge>
+              <Badge tone="primary" className="!bg-primary !text-on-primary font-bold shadow-[0_0_10px_rgba(76,215,246,0.4)]">{stopped ? "Last recommendation, not approved" : `Top ranked (#${recommendation.rank})`}</Badge>
               <span className="font-mono-data font-bold text-primary">{top.intervention.id}: {top.intervention.title}</span>
             </div>
             <h2 className="font-headline-xl text-on-surface">
-              {recommendation.prevented ? "Approval recommended" : "Best available option does not fully prevent the breach"}
+              {stopped ? "The run stopped before this was approved" : recommendation.prevented ? "Approval recommended" : "Best available option does not fully prevent the breach"}
             </h2>
             <p className="font-body-md text-on-surface-variant">
               Composite score <strong className="font-mono-data text-primary">{recommendation.score}</strong>. {recommendation.reasons.join("; ")}. {top.intervention.rationale}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Icon, Pending, ViewHeader, cx, type Tone } from "../components/ui";
 import { downloadText, toCsv } from "../lib/download";
 import { humanize } from "../lib/format";
@@ -15,6 +15,17 @@ export default function Evidence({ inv, nav }: { inv: Investigation; nav: Nav })
   const [sort, setSort] = useState<Sort>("id");
   const hypothesisFilter = nav.focus.hypothesisId;
   const eventFilter = nav.focus.eventId;
+
+  // Arriving from a hypothesis chip scrolls to that row once, then releases the highlight.
+  const targetEvidence = nav.focus.evidenceId;
+  useEffect(() => {
+    if (!targetEvidence) return;
+    document.getElementById(`ev-${targetEvidence}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const timer = setTimeout(() => nav.setFocus({ evidenceId: null }), 2500);
+    return () => clearTimeout(timer);
+    // nav.setFocus is stable; only a new target should restart this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetEvidence]);
 
   const kinds = useMemo(() => [...new Set(inv.evidence.map((e) => e.kind))], [inv.evidence]);
   const rows = useMemo(() => {
@@ -118,7 +129,6 @@ export default function Evidence({ inv, nav }: { inv: Investigation; nav: Nav })
                   <tr
                     key={e.id}
                     id={`ev-${e.id}`}
-                    ref={highlighted ? (el) => el?.scrollIntoView({ block: "center", behavior: "smooth" }) : undefined}
                     className={cx("align-top transition-colors hover:bg-white/5", highlighted && "bg-primary/10")}
                   >
                     <td className="px-space-xl py-space-lg font-bold text-primary">{e.id}</td>

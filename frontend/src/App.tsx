@@ -181,7 +181,7 @@ export default function App() {
                   {backend.healthError}
                 </Notice>
               )}
-              {inv.stage === "failed" && (
+              {inv.stage === "failed" && view !== "gate" && view !== "verification" && (
                 <Notice tone="error" icon="report" title="The investigation stopped without a verified fix">
                   {inv.error ?? "No reason was recorded."}
                 </Notice>

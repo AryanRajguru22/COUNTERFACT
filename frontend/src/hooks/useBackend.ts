@@ -34,7 +34,8 @@ export function useBackend(): BackendState {
         setLlmMode(health.llm_mode);
         setHealthError(null);
         const list = await api.listIncidents();
-        if (!cancelled) setIncidents(list);
+        // keep the same array when nothing changed, so the 8 s health poll does not re-render the app
+        if (!cancelled) setIncidents((prev) => (JSON.stringify(prev) === JSON.stringify(list) ? prev : list));
       } catch (error) {
         if (cancelled) return;
         if (error instanceof ApiError && error.status === 503) {

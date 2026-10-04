@@ -10,7 +10,7 @@ import type { Investigation } from "../types";
 const PHASES = [
   { id: "executing", label: "Apply to simulated environment", icon: "terminal" },
   { id: "verifying", label: "Replay incident & check SLO", icon: "rule" },
-  { id: "done", label: "Stress test (demand +20%)", icon: "speed" },
+  { id: "done", label: "Stress test", icon: "speed" },
 ] as const;
 
 export default function Verification({ inv, nav }: { inv: Investigation; nav: Nav }) {
@@ -19,6 +19,13 @@ export default function Verification({ inv, nav }: { inv: Investigation; nav: Na
   const running = inv.stage === "executing" || inv.stage === "verifying";
 
   if (!execution && !running) {
+    if (inv.stage === "failed") {
+      return (
+        <Notice tone="error" icon="report" title="The investigation stopped before anything was executed">
+          {inv.error ?? "No reason was recorded."}
+        </Notice>
+      );
+    }
     return (
       <Pending
         title="Nothing has been executed yet"
@@ -130,8 +137,8 @@ export default function Verification({ inv, nav }: { inv: Investigation; nav: Na
                 <Label>Stress test</Label>
                 <Badge tone={verification.stress_test_passed ? "secondary" : "error"} className="font-bold">{verification.stress_test_passed ? "Pass" : "Fail"}</Badge>
               </div>
-              <span className="font-headline-sm font-semibold text-on-surface">Demand variant</span>
-              <p className="font-body-sm text-on-surface-variant">The incident replayed again under a heavier load to check the fix is not marginal.</p>
+              <span className="font-headline-sm font-semibold text-on-surface">Stress variant</span>
+              <p className="font-body-sm text-on-surface-variant">Reported by the verifier alongside the SLO checks.</p>
             </div>
           </div>
         </div>
