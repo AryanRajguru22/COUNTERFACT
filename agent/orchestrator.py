@@ -40,6 +40,7 @@ class _Run:
         self.store = store
         # The persisted Investigation.mode is authoritative, so resume runs in the mode the investigation started in.
         self.llm = LLMClient(self.inv.incident.id, self.inv.mode)
+        self.fallback_logged = False
         self.delay_s = int(os.environ.get("STEP_DELAY_MS", "600")) / 1000
 
     def publish(self, pause: bool = True) -> None:
@@ -61,6 +62,10 @@ class _Run:
                    f"You are investigating incident {self.inv.incident.id} ({self.inv.incident.title}). "
                    f"In two sentences, narrate your reasoning for the '{self.inv.stage}' stage."}]
         text = self.llm.complete(f"thought.{key}", prompt)
+        if self.llm.fallback_reason and not self.fallback_logged:
+            self.fallback_logged = True
+            self.step("decision", f"Live LLM unavailable ({self.llm.fallback_reason}); "
+                                  "continuing with replay recordings.")
         if text:
             self.step("thought", text)
 

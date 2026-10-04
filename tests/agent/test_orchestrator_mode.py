@@ -13,6 +13,8 @@ def llm_modes(monkeypatch):
     modes: list[str | None] = []
 
     class FakeLLM:
+        fallback_reason = None
+
         def __init__(self, incident_id, mode=None):
             modes.append(mode)
 

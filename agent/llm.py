@@ -4,6 +4,9 @@ replay (default): returns recorded responses from agent/recordings/<incident_id>
              No network, no key — the demo always runs in this mode.
 live:        any OpenAI-compatible chat-completions endpoint (Groq, Google AI Studio,
              local Ollama, ...) configured by LLM_BASE_URL / LLM_API_KEY / LLM_MODEL.
+             If the configuration is missing or a live call fails for any reason, the
+             client falls back to replay for the rest of its life and records why in
+             `fallback_reason`. `mode` keeps the requested mode.
 """
 
 from __future__ import annotations
@@ -28,12 +31,17 @@ class LLMClient:
         if self.mode not in ("replay", "live"):
             raise ValueError(f"unknown LLM mode: {self.mode}")
         self._recordings: dict[str, str] | None = None
+        self.fallback_reason: str | None = None  # set once a live call fails; replay is used from then on
 
     def complete(self, key: str, messages: list[dict[str, str]] | None = None) -> str:
         """Return the model's text for a prompt. `key` names the prompt so replay can look it up."""
-        if self.mode == "replay":
+        if self.mode == "replay" or self.fallback_reason is not None:
             return self._replay(key)
-        return self._live(messages or [{"role": "user", "content": key}])
+        try:
+            return self._live(messages or [{"role": "user", "content": key}])
+        except Exception as error:  # missing config, network, HTTP status or malformed response
+            self.fallback_reason = f"{type(error).__name__}: {error}"
+            return self._replay(key)
 
     def _replay(self, key: str) -> str:
         if self._recordings is None:
