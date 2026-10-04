@@ -1,9 +1,9 @@
 """Root-cause selection. Owner: Vinayak.
 
-The root cause is the strongest surviving hypothesis: highest confidence, then most supporting
-evidence, then lowest id. Its causal chain is read off the timeline: every event cited by the
-winner's supporting evidence, plus the symptom events (metrics, alerts, logs, traces) that no rival
-hypothesis's evidence explains, in time order. Each link's effect is phrased from the event itself.
+The root cause is the strongest surviving hypothesis: highest confidence, then the one whose
+predictions all hold, then most supporting evidence, then lowest id. Its causal chain is read off
+the timeline: every event cited by the winner's supporting evidence, plus the symptom events
+(metrics, alerts, logs, traces) that no rival hypothesis's evidence explains, in time order. Each link's effect is phrased from the event itself.
 Deterministic: no clock, randomness, network or LLM.
 """
 
@@ -77,7 +77,10 @@ def determine_root_cause(hypotheses: list[Hypothesis], evidence: list[Evidence],
     survivors = [h for h in hypotheses if h.status in ("supported", "confirmed")]
     if not survivors:
         raise ValueError("no surviving hypothesis to promote to root cause")
-    best = min(survivors, key=lambda h: (-h.confidence, -len(h.supporting_evidence_ids), h.id))
+    # Highest confidence wins. On a tie, prefer the hypothesis whose predictions all hold, then the one
+    # with more supporting evidence, then the lowest id.
+    best = min(survivors, key=lambda h: (-h.confidence, not all(t.passed for t in h.tests),
+                                         -len(h.supporting_evidence_ids), h.id))
     rejected = [h for h in hypotheses if h.status == "rejected"]
     statement = best.mechanism
     if rejected:

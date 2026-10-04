@@ -82,9 +82,56 @@ def test_no_surviving_hypothesis_raises():
         determine_root_cause(rejected, evidence, [])
 
 
-def test_hypothesis_without_evidence_stays_under_test():
+def _h(hid, **update):
+    h = Hypothesis(id=hid, title=f"{hid} title", mechanism=f"{hid} mechanism", origin="seed",
+                   status="proposed", confidence=0.25)
+    return h.model_copy(update=update)
+
+
+def _ev(eid, weight, **stance):
+    return Evidence(id=eid, kind="metric", description=f"{eid} observation.", stance=stance, weight=weight)
+
+
+def test_hypothesis_without_evidence_stays_proposed_at_zero_confidence():
     h = seed_hypotheses(INCIDENT, build_timeline(INCIDENT))[0]
-    assert test_hypothesis(h, []).status == "testing"
+    result = test_hypothesis(h, [])
+    assert (result.status, result.confidence, result.tests) == ("proposed", 0.0, [])
+
+
+def test_unseen_hypothesis_id_is_scored_from_its_stances():
+    result = test_hypothesis(_h("H7"), [_ev("EV-90", 0.6, H7="supports"), _ev("EV-91", 0.2, H7="refutes")])
+    assert result.status == "supported"
+    assert result.confidence == 0.75  # support / (support + refute)
+    assert result.supporting_evidence_ids == ["EV-90"] and result.refuting_evidence_ids == ["EV-91"]
+
+
+def test_rejected_only_when_refuting_weight_exceeds_supporting_weight():
+    strong_refutation = _ev("EV-90", 0.9, H7="refutes")
+    outweighed = test_hypothesis(_h("H7"), [strong_refutation, _ev("EV-91", 0.95, H7="supports"),
+                                            _ev("EV-92", 0.9, H7="supports")])
+    assert outweighed.status == "supported" and outweighed.rejection_reason is None
+    tied = test_hypothesis(_h("H7"), [_ev("EV-90", 0.5, H7="refutes"), _ev("EV-91", 0.5, H7="supports")])
+    assert tied.status == "supported" and tied.confidence == 0.5
+
+
+def test_confidence_is_capped_at_095():
+    assert test_hypothesis(_h("H7"), [_ev("EV-90", 0.9, H7="supports")]).confidence == 0.95
+
+
+def test_rejection_reason_leads_with_the_strongest_refutation():
+    result = test_hypothesis(_h("H7"), [_ev("EV-90", 0.4, H7="refutes"), _ev("EV-91", 0.8, H7="refutes"),
+                                        _ev("EV-92", 0.7, H7="supports")])
+    assert result.status == "rejected"
+    assert result.rejection_reason.startswith("Refuted by EV-91: EV-91 observation.")
+    assert "circumstantial" not in result.rejection_reason  # 0.7 is strong support, not weak
+
+
+def test_tied_confidence_prefers_the_hypothesis_whose_predictions_all_pass():
+    mixed = test_hypothesis(_h("H1"), [_ev("EV-90", 0.8, H1="supports"), _ev("EV-91", 0.8, H1="supports"),
+                                       _ev("EV-92", 0.4, H1="refutes")])
+    clean = test_hypothesis(_h("H2"), [_ev("EV-93", 0.8, H2="supports")])
+    mixed = mixed.model_copy(update={"confidence": clean.confidence})  # force a tie
+    assert determine_root_cause([mixed, clean], [], []).hypothesis_id == "H2"
 
 
 def test_every_output_validates_against_its_contract():

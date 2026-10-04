@@ -94,59 +94,63 @@ def seed_hypotheses(incident_id: str, timeline: list[Event]) -> list[Hypothesis]
     return [h for _, h in candidates(incident_id, timeline)]
 
 
-DECISIVE = 0.85  # one refutation at least this strong falsifies a hypothesis on its own
-SMOOTHING = 0.5  # keeps confidence below 1 when evidence is thin
+CAP = 0.95  # confidence never reaches 1: the evidence is sampled, not exhaustive
+STRONG = 0.85  # the rubric's decisive band (see evidence.py)
+WEAK = 0.4  # the rubric's weak band: coincidence or a shared symptom
 
 
 def _order(items: list[Evidence]) -> list[Evidence]:
     return sorted(items, key=lambda e: (-e.weight, e.id))
 
 
-def _reason(supporting: list[Evidence], refuting: list[Evidence], decisive: Evidence | None) -> str:
+def _lead(refuting: list[Evidence]) -> Evidence:
+    """The refutation the reason opens with: a strong one aimed at this hypothesis alone reads best,
+    otherwise the strongest. This only picks the wording; the verdict comes from the weights."""
+    targeted = [e for e in refuting if e.weight >= STRONG and list(e.stance.values()).count("refutes") == 1]
+    return (targeted or refuting)[0]
+
+
+def _reason(supporting: list[Evidence], refuting: list[Evidence]) -> str:
     support, refute = sum(e.weight for e in supporting), sum(e.weight for e in refuting)
-    lead = decisive or refuting[0]
+    lead = _lead(refuting)
     others = [e.id for e in refuting if e is not lead]
-    reason = f"{'Falsified' if decisive else 'Outweighed'} by {lead.id}: {lead.description.rstrip('.')}."
+    reason = f"Refuted by {lead.id}: {lead.description.rstrip('.')}."
     if others:
         reason += f" Also refuted by {', '.join(others)}"
     reason += f" (refuting weight {refute:.2f} vs supporting {support:.2f})."
-    if supporting:
-        reason += (f" The only support ({', '.join(e.id for e in supporting)}) is circumstantial: "
+    if supporting and all(e.weight <= WEAK for e in supporting):
+        reason += (f" Its only support ({', '.join(e.id for e in supporting)}) is weak: "
                    f"{supporting[0].description.rstrip('.')}.")
+    elif supporting:
+        reason += f" Its support ({', '.join(e.id for e in supporting)}) is outweighed."
     return reason
-
-
-def _decisive(refuting: list[Evidence]) -> Evidence | None:
-    """The strongest decisive refutation, preferring one aimed at this hypothesis alone."""
-    strong = [e for e in refuting if e.weight >= DECISIVE]
-    targeted = [e for e in strong if list(e.stance.values()).count("refutes") == 1]
-    return (targeted or strong or [None])[0]
 
 
 def test_hypothesis(hypothesis: Hypothesis, evidence: list[Evidence]) -> Hypothesis:
     """Check each prediction the hypothesis makes against the evidence, then support or reject it.
 
-    A hypothesis is rejected when any refutation is decisive (weight >= DECISIVE) or when the refuting
-    weight outweighs the supporting weight. Confidence is support / (support + refute + SMOOTHING).
+    Works for any hypothesis id, seeded or LLM-proposed: only the evidence stances matter.
+    - No evidence bears on it: it stays proposed at confidence 0.
+    - Rejected when the refuting weight exceeds the supporting weight (a tie is not a rejection).
+    - Confidence is support / (support + refute), capped at 0.95.
     """
     from evidence.evidence import prediction_for  # evidence.py imports this module
 
     relevant = [e for e in evidence if e.stance.get(hypothesis.id) in ("supports", "refutes")]
+    if not relevant:
+        return hypothesis.model_copy(update={
+            "status": "proposed", "confidence": 0.0, "supporting_evidence_ids": [], "refuting_evidence_ids": [],
+            "tests": [], "rejection_reason": None,
+        })
+
     supporting = _order([e for e in relevant if e.stance[hypothesis.id] == "supports"])
     refuting = _order([e for e in relevant if e.stance[hypothesis.id] == "refutes"])
     support, refute = sum(e.weight for e in supporting), sum(e.weight for e in refuting)
-    decisive = _decisive(refuting)
-    rejected = bool(refuting) and (decisive is not None or refute > support)
-
-    if not relevant:
-        status, confidence = "testing", hypothesis.confidence
-    else:
-        status = "rejected" if rejected else "supported"
-        confidence = round(min(0.95, support / (support + refute + SMOOTHING)), 2)
+    rejected = refute > support
 
     return hypothesis.model_copy(update={
-        "status": status,
-        "confidence": confidence,
+        "status": "rejected" if rejected else "supported",
+        "confidence": round(min(CAP, support / (support + refute)), 2),
         "supporting_evidence_ids": [e.id for e in supporting],
         "refuting_evidence_ids": [e.id for e in refuting],
         "tests": [
@@ -157,7 +161,7 @@ def test_hypothesis(hypothesis: Hypothesis, evidence: list[Evidence]) -> Hypothe
             )
             for e in sorted(relevant, key=lambda e: e.id)
         ],
-        "rejection_reason": _reason(supporting, refuting, decisive) if rejected else None,
+        "rejection_reason": _reason(supporting, refuting) if rejected else None,
     })
 
 
