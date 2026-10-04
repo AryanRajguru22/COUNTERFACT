@@ -1,0 +1,9 @@
+{
+  "thought.timeline": "Rebuilding the timeline for INC-2041. Two events change system state before the errors start: CHG-881 cuts the pool to 10 at 14:05, and the batch job takes 8 connections at 14:30.",
+  "thought.hypotheses": "Four explanations fit the symptoms: pool exhaustion, a bad v2.4.1 deploy, a gateway slowdown, or an overloaded database. Each one predicts different evidence.",
+  "thought.evidence": "Gathering evidence for each hypothesis: traces, pool metrics, deploy records, gateway spans and database load.",
+  "thought.testing": "Testing each hypothesis against its evidence. The rollback at 14:40 changed nothing, gateway spans are normal and the database is idle, so H2, H3 and H4 should not survive.",
+  "thought.root_cause": "Only pool exhaustion survives. The causal chain runs from CHG-881 through batch-job contention to queuing, timeouts and a retry storm.",
+  "thought.counterfactual": "Replaying the incident with each candidate intervention to see which would have prevented the SLO breach.",
+  "thought.recommendation": "Recommending the top-ranked intervention that prevents the breach at the lowest risk and effort. Waiting for human approval."
+}
