@@ -1,0 +1,14 @@
+{
+  "id": "INC-2041",
+  "title": "Checkout payments failing",
+  "service": "payment-svc",
+  "severity": "sev1",
+  "started_at": "2026-09-28T14:31:00Z",
+  "detected_at": "2026-09-28T14:32:00Z",
+  "resolved_at": "2026-09-28T14:54:00Z",
+  "summary": "Checkout 5xx rate rose above the 5% SLO at 14:32 UTC, peaked near 38% and recovered at 14:54 (about 22 minutes of breach).",
+  "window": {
+    "start": "2026-09-28T14:00:00Z",
+    "minutes": 60
+  }
+}

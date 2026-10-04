@@ -1,0 +1,141 @@
+[
+  {
+    "id": "E-001",
+    "ts": "2026-09-28T14:05:00Z",
+    "t": 5,
+    "source": "payment-svc",
+    "kind": "config_change",
+    "summary": "CHG-881: payment-svc db.pool.max 50 -> 10 (\"cost optimisation\")",
+    "attributes": {
+      "change_id": "CHG-881",
+      "key": "db.pool.max",
+      "author": "platform-bot"
+    },
+    "state_change": {
+      "param": "pool_size",
+      "from": 50,
+      "to": 10
+    }
+  },
+  {
+    "id": "E-002",
+    "ts": "2026-09-28T14:20:00Z",
+    "t": 20,
+    "source": "payment-svc",
+    "kind": "deploy",
+    "summary": "Deploy payment-svc v2.4.1",
+    "attributes": {
+      "version": "v2.4.1",
+      "previous_version": "v2.4.0"
+    }
+  },
+  {
+    "id": "E-003",
+    "ts": "2026-09-28T14:28:00Z",
+    "t": 28,
+    "source": "payment-gateway",
+    "kind": "external",
+    "summary": "Gateway provider notice: \"minor EU latency\"",
+    "attributes": {
+      "provider": "payment-gateway",
+      "region": "EU"
+    }
+  },
+  {
+    "id": "E-004",
+    "ts": "2026-09-28T14:30:00Z",
+    "t": 30,
+    "source": "settlement-reconcile",
+    "kind": "job_start",
+    "summary": "Batch job settlement-reconcile starts (moved from 02:00 by CHG-870 three days earlier)",
+    "attributes": {
+      "job": "settlement-reconcile",
+      "rescheduled_by": "CHG-870",
+      "previous_schedule": "02:00 UTC",
+      "connections": 8
+    },
+    "state_change": {
+      "param": "batch_conns",
+      "from": 0,
+      "to": 8
+    }
+  },
+  {
+    "id": "E-005",
+    "ts": "2026-09-28T14:31:00Z",
+    "t": 31,
+    "source": "payment-svc",
+    "kind": "metric",
+    "summary": "Pool wait p99 rises from 2 ms to 900 ms",
+    "attributes": {
+      "metric": "pool_wait_p99_ms",
+      "from": 2,
+      "to": 900
+    }
+  },
+  {
+    "id": "E-006",
+    "ts": "2026-09-28T14:32:00Z",
+    "t": 32,
+    "source": "checkout",
+    "kind": "alert",
+    "summary": "Alert: checkout 5xx > 5%",
+    "attributes": {
+      "alert": "CheckoutErrorRateHigh",
+      "threshold": 0.05
+    }
+  },
+  {
+    "id": "E-007",
+    "ts": "2026-09-28T14:36:00Z",
+    "t": 36,
+    "source": "checkout",
+    "kind": "metric",
+    "summary": "Retry storm: 5xx peaks near 38%",
+    "attributes": {
+      "metric": "checkout_5xx_rate",
+      "value": 0.38
+    }
+  },
+  {
+    "id": "E-008",
+    "ts": "2026-09-28T14:40:00Z",
+    "t": 40,
+    "source": "payment-svc",
+    "kind": "deploy",
+    "summary": "Rollback to v2.4.0, no improvement",
+    "attributes": {
+      "version": "v2.4.0",
+      "previous_version": "v2.4.1",
+      "rollback": true
+    }
+  },
+  {
+    "id": "E-009",
+    "ts": "2026-09-28T14:52:00Z",
+    "t": 52,
+    "source": "settlement-reconcile",
+    "kind": "job_end",
+    "summary": "Batch job ends",
+    "attributes": {
+      "job": "settlement-reconcile"
+    },
+    "state_change": {
+      "param": "batch_conns",
+      "from": 8,
+      "to": 0
+    }
+  },
+  {
+    "id": "E-010",
+    "ts": "2026-09-28T14:54:00Z",
+    "t": 54,
+    "source": "checkout",
+    "kind": "metric",
+    "summary": "Recovered",
+    "attributes": {
+      "metric": "checkout_5xx_rate",
+      "value": 0.004
+    }
+  }
+]

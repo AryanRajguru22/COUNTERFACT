@@ -1,0 +1,13 @@
+{
+  "root_cause_hypothesis_id": "H1",
+  "rejected_hypothesis_ids": [
+    "H2",
+    "H3",
+    "H4"
+  ],
+  "preventing_intervention_ids": [
+    "I1",
+    "I2",
+    "I4"
+  ]
+}
