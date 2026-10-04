@@ -32,13 +32,14 @@ def _now() -> str:
 
 
 class _Run:
-    def __init__(self, investigation_id: str, store: Store, mode: str | None):
+    def __init__(self, investigation_id: str, store: Store):
         current = store.get(investigation_id)
         if current is None:
             raise KeyError(f"unknown investigation: {investigation_id}")
         self.inv = current.model_copy(deep=True)
         self.store = store
-        self.llm = LLMClient(self.inv.incident.id, mode)
+        # The persisted Investigation.mode is authoritative, so resume runs in the mode the investigation started in.
+        self.llm = LLMClient(self.inv.incident.id, self.inv.mode)
         self.delay_s = int(os.environ.get("STEP_DELAY_MS", "600")) / 1000
 
     def publish(self, pause: bool = True) -> None:
@@ -76,7 +77,8 @@ class _Run:
 
 
 def run(investigation_id: str, store: Store, mode: str | None = None) -> None:
-    r = _Run(investigation_id, store, mode)
+    # `mode` is kept only for signature compatibility; Investigation.mode is the source of truth.
+    r = _Run(investigation_id, store)
     try:
         _investigate(r)
     except Exception as error:  # surface any engine failure in the UI instead of hanging
@@ -154,7 +156,8 @@ def _recommend(r: _Run) -> None:
 
 
 def resume_after_approval(investigation_id: str, approval: Approval, store: Store, mode: str | None = None) -> None:
-    r = _Run(investigation_id, store, mode)
+    # `mode` is kept only for signature compatibility; Investigation.mode is the source of truth.
+    r = _Run(investigation_id, store)
     try:
         _act_on_approval(r, approval)
     except Exception as error:

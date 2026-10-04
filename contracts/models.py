@@ -264,6 +264,7 @@ class Investigation(Contract):
     id: str
     incident: Incident
     stage: Stage = "created"
+    mode: InvestigationMode = "replay"  # persisted at creation; the orchestrator reads it from here
     timeline: list[Event] = Field(default_factory=list)
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)

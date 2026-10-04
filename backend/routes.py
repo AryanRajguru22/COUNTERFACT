@@ -47,9 +47,9 @@ def create_investigation(body: CreateInvestigationRequest, background: Backgroun
         incident = tools.get_incident(body.incident_id)
     except KeyError:
         raise HTTPException(404, f"unknown incident: {body.incident_id}")
-    investigation = Investigation(id=f"inv-{uuid.uuid4().hex[:8]}", incident=incident)
+    investigation = Investigation(id=f"inv-{uuid.uuid4().hex[:8]}", incident=incident, mode=body.mode)
     store.put(investigation)
-    background.add_task(orchestrator.run, investigation.id, store, body.mode)
+    background.add_task(orchestrator.run, investigation.id, store)
     return CreateInvestigationResponse(investigation_id=investigation.id)
 
 
