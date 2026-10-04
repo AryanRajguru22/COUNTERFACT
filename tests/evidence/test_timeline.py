@@ -7,6 +7,7 @@ from data.loader import load_events, load_incident
 from evidence import build_timeline
 
 INCIDENT = "INC-2041"
+ANNOTATIONS = ("causal", "decoy")
 
 
 def _ts(value):
@@ -18,10 +19,19 @@ def test_timeline_is_ordered_by_time():
     assert [(e.t, _ts(e.ts)) for e in timeline] == sorted((e.t, _ts(e.ts)) for e in timeline)
 
 
-def test_timeline_contains_every_fixture_event_unchanged():
+def test_timeline_contains_every_fixture_event_unchanged_apart_from_annotations():
     timeline = {e.id: e for e in build_timeline(INCIDENT)}
     for event in load_events(INCIDENT):
-        assert timeline[event.id] == event
+        got = timeline[event.id]
+        attrs = {k: v for k, v in got.attributes.items() if k not in ANNOTATIONS}
+        assert got.model_copy(update={"attributes": attrs}) == event
+
+
+def test_state_changes_are_causal_and_changes_without_one_are_decoys():
+    timeline = build_timeline(INCIDENT)
+    assert all(set(ANNOTATIONS) <= set(e.attributes) for e in timeline)
+    assert {e.id for e in timeline if e.attributes["causal"]} == {"E-001", "E-004", "E-009"}
+    assert {e.id for e in timeline if e.attributes["decoy"]} == {"E-002", "E-003", "E-008"}
 
 
 def test_timeline_adds_first_sightings_from_raw_telemetry():
