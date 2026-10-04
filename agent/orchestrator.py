@@ -13,7 +13,9 @@ Investigation and publishes snapshots to the store after every step.
 from __future__ import annotations
 
 import functools
+import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +38,13 @@ from contracts.models import (
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 MAX_ATTEMPTS = 3  # approval decisions (approve or reject) before an unresolved investigation stops in `failed`
+
+# LLM-proposed hypotheses (H18), opt-in with LLM_HYPOTHESES=1. The LLM only supplies candidate text; the
+# evidence engine still gathers, tests and decides on them exactly as it does for the seeds.
+PROPOSE_KEY = "hypotheses.propose"  # replay key and template name
+MAX_PROPOSALS = 2
+PROPOSAL_PRIOR = 0.25  # the seeds' starting confidence
+TITLE_MAX, MECHANISM_MAX = 120, 600
 
 
 class Store(Protocol):
@@ -205,12 +214,15 @@ class _Run:
         messages = [{"role": "system", "content": load_template("system")},
                     {"role": "user", "content": fill_prompt(load_template(prompt_key), _facts(self.inv))}]
         text = self.llm.complete(prompt_key, messages)
+        self.note_fallback()
+        if text:
+            self.step("thought", text)
+
+    def note_fallback(self) -> None:
         if self.llm.fallback_reason and not self.fallback_logged:
             self.fallback_logged = True
             self.step("decision", f"Live LLM unavailable ({self.llm.fallback_reason}); "
                                   "continuing with replay recordings.")
-        if text:
-            self.step("thought", text)
 
     def tool(self, name: str, *args, label: str | None = None, **kwargs):
         # `label` is the readable step text and never reaches the engine.
@@ -224,6 +236,64 @@ class _Run:
         self.inv.error = f"{type(error).__name__}: {error}"
         self.inv.stage = "failed"
         self.store.put(self.inv)
+
+
+def llm_hypotheses_enabled() -> bool:
+    return os.environ.get("LLM_HYPOTHESES") == "1"
+
+
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def parse_proposals(text: object, existing_titles: Iterable[str]) -> list[tuple[str, str]]:
+    """(title, mechanism) pairs from untrusted LLM output. Anything unusable is dropped, never raised:
+    a bad proposal must not fail the investigation."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    body = text.strip()
+    if fenced := re.search(r"```(?:json)?\s*(.*?)```", body, re.DOTALL):
+        body = fenced.group(1).strip()
+    try:
+        items = json.loads(body)
+    except ValueError:
+        return []
+    if not isinstance(items, list):
+        return []
+    taken = {" ".join(t.split()).casefold() for t in existing_titles}
+    proposals: list[tuple[str, str]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title, mechanism = item.get("title"), item.get("mechanism")
+        if not (isinstance(title, str) and title.strip() and isinstance(mechanism, str) and mechanism.strip()):
+            continue
+        key = " ".join(title.split()).casefold()
+        if key in taken:  # restates a seed (or an earlier proposal): nothing new to test
+            continue
+        taken.add(key)
+        proposals.append((_clip(title, TITLE_MAX), _clip(mechanism, MECHANISM_MAX)))
+        if len(proposals) == MAX_PROPOSALS:
+            break
+    return proposals
+
+
+def _propose_hypotheses(r: _Run) -> None:
+    """Ask the LLM for extra hypotheses beyond the seeds. In replay without a recorded proposal, or when the
+    live LLM is unavailable, this adds nothing and the investigation carries on with the seeds."""
+    inv = r.inv
+    messages = [{"role": "system", "content": load_template("system")},
+                {"role": "user", "content": fill_prompt(load_template(PROPOSE_KEY), _facts(inv))}]
+    text = r.llm.complete(PROPOSE_KEY, messages)
+    r.note_fallback()
+    numbers = [int(m.group(1)) for h in inv.hypotheses if (m := re.fullmatch(r"H(\d+)", h.id))]
+    next_number = max(numbers, default=len(inv.hypotheses)) + 1
+    for n, (title, mechanism) in enumerate(parse_proposals(text, [h.title for h in inv.hypotheses]), next_number):
+        proposed = Hypothesis(id=f"H{n}", title=title, mechanism=mechanism, origin="llm", status="proposed",
+                              confidence=PROPOSAL_PRIOR)
+        inv.hypotheses.append(proposed)
+        r.step("decision", f"Added LLM-proposed hypothesis {proposed.id} {title}: {mechanism}")
 
 
 def run(investigation_id: str, store: Store, mode: str | None = None) -> None:
@@ -256,6 +326,8 @@ def _investigate(r: _Run) -> None:
                             label=f"Proposing competing hypotheses from {len(inv.timeline)} events")
     r.step("tool_result", f"{len(inv.hypotheses)} competing hypotheses: "
            + "; ".join(f"{h.id} {h.title}" for h in inv.hypotheses), tool="seed_hypotheses")
+    if llm_hypotheses_enabled():
+        _propose_hypotheses(r)
 
     r.stage("evidence")
     r.think("evidence")
@@ -264,7 +336,10 @@ def _investigate(r: _Run) -> None:
         items = r.tool("gather_evidence", incident_id=incident_id, hypothesis=h,
                        label=f"Gathering evidence for {h.id} {h.title}")
         for e in items:
-            seen.setdefault(e.id, e)
+            # One copy per evidence id, carrying every hypothesis's stance. An LLM-proposed hypothesis gets
+            # copies tagged with its own id; keeping only the first copy would silently drop that stance.
+            kept = seen.get(e.id)
+            seen[e.id] = e if kept is None else kept.model_copy(update={"stance": {**kept.stance, **e.stance}})
         inv.evidence = list(seen.values())
         supporting = sum(e.stance.get(h.id) == "supports" for e in items)
         refuting = sum(e.stance.get(h.id) == "refutes" for e in items)
