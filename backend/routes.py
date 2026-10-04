@@ -33,13 +33,14 @@ def _get_or_404(investigation_id: str) -> Investigation:
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    # Prove the replay demo can run: every incident fixture, its system model and its replay recording load.
-    # Never touches the live LLM, so health does not depend on network or keys.
+    # Prove the replay demo can run: every fixture file the engines read, the simulator's system model and the
+    # replay recording load. Never touches the live LLM, so health does not depend on network or keys.
     try:
         incidents = tools.list_incidents()
         if not incidents:
             raise FileNotFoundError("no incident fixtures found")
         for incident in incidents:
+            tools.check_fixtures(incident.id)
             tools.call("load_system_model", incident.id)
             LLMClient(incident.id, "replay").complete("thought.timeline")
     except Exception as error:
