@@ -25,6 +25,17 @@ def test_investigation_round_trips_through_json():
     restored = Investigation.model_validate_json(investigation.model_dump_json())
     assert restored == investigation
     assert restored.stage == "created"
+    assert restored.mode == "replay"
+
+
+def test_investigation_mode_is_additive():
+    incident = load_incident("INC-2041").model_dump(mode="json")
+    # JSON written before Investigation.mode existed still parses, as replay.
+    assert Investigation.model_validate({"id": "inv-1", "incident": incident}).mode == "replay"
+    live = Investigation.model_validate({"id": "inv-1", "incident": incident, "mode": "live"})
+    assert Investigation.model_validate_json(live.model_dump_json()).mode == "live"
+    with pytest.raises(ValidationError):
+        Investigation.model_validate({"id": "inv-1", "incident": incident, "mode": "bogus"})
 
 
 def test_invalid_enum_is_rejected():

@@ -28,6 +28,7 @@ def test_investigation_reaches_awaiting_approval(client):
     truth = load_ground_truth("INC-2041")
     investigation = _wait_for(client, _start(client), {"awaiting_approval", "failed"})
     assert investigation["stage"] == "awaiting_approval", investigation["error"]
+    assert investigation["mode"] == "replay"
     assert investigation["root_cause"]["hypothesis_id"] == truth["root_cause_hypothesis_id"]
     rejected = sorted(h["id"] for h in investigation["hypotheses"] if h["status"] == "rejected")
     assert rejected == sorted(truth["rejected_hypothesis_ids"])

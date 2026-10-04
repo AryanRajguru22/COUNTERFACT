@@ -240,6 +240,7 @@ export interface Investigation {
   id: string;
   incident: Incident;
   stage: Stage;
+  mode: InvestigationMode;
   timeline: Event[];
   hypotheses: Hypothesis[];
   evidence: Evidence[];

@@ -17,8 +17,8 @@ The conventions are:
 | --- | --- | --- | --- |
 | GET | `/health` | | `HealthResponse {ok, llm_mode}` |
 | GET | `/incidents` | | `Incident[]` |
-| POST | `/investigations` | `{incident_id, mode: "replay" \| "live"}` | `{investigation_id}`; runs in the background |
-| GET | `/investigations/{id}` | | `Investigation` (frontend polls every 1 s) |
+| POST | `/investigations` | `{incident_id, mode: "replay" \| "live"}` | `{investigation_id}`; runs in the background. `mode` defaults to `"replay"` and is persisted as `Investigation.mode`. |
+| GET | `/investigations/{id}` | | `Investigation`, including the persisted `mode` (frontend polls every 1 s) |
 | POST | `/investigations/{id}/approval` | `Approval` | `Investigation`. Approve leads to execute and verify; reject leads to replan. Returns 409 unless `awaiting_approval`. |
 | POST | `/simulate` | `{incident_id, intervention_ids[]}` | `SimulationResult` |
 
@@ -57,6 +57,8 @@ Agent (Rohit, `agent/`):
 orchestrator.run(investigation_id, store, mode=None)
 orchestrator.resume_after_approval(investigation_id, approval, store, mode=None)
 ```
+
+Both entry points read the LLM mode from the persisted `Investigation.mode`. The `mode` argument is kept only for signature compatibility and is ignored.
 
 ## Data contract
 
