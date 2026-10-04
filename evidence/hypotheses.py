@@ -94,6 +94,24 @@ def seed_hypotheses(incident_id: str, timeline: list[Event]) -> list[Hypothesis]
     return [h for _, h in candidates(incident_id, timeline)]
 
 
+# Words that place a free-text (LLM-proposed) hypothesis in a signal family. Deliberately crude: it
+# only decides which evidence the hypothesis is tested against; the evidence still decides the verdict.
+FAMILY_KEYWORDS = {
+    "pool": ("pool", "exhaust", "starv", "batch"),
+    "regression": ("deploy", "release", "regression", "version", "bug", "rollout"),
+    "gateway": ("gateway", "provider", "third-party", "upstream"),
+    "database": ("database", "sql", "query", "db "),
+}
+
+
+def family_of(hypothesis: Hypothesis) -> str | None:
+    """The family whose keywords the title and mechanism mention most; ties go to FAMILIES order."""
+    text = f"{hypothesis.title} {hypothesis.mechanism}".lower()
+    hits = {f: sum(text.count(word) for word in FAMILY_KEYWORDS[f]) for f in FAMILIES}
+    best = max(FAMILIES, key=lambda f: (hits[f], -FAMILIES.index(f)))
+    return best if hits[best] else None
+
+
 CAP = 0.95  # confidence never reaches 1: the evidence is sampled, not exhaustive
 STRONG = 0.85  # the rubric's decisive band (see evidence.py)
 WEAK = 0.4  # the rubric's weak band: coincidence or a shared symptom

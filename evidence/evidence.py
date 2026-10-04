@@ -21,7 +21,7 @@ from typing import Any, Callable
 
 from contracts.models import Event, Evidence, EvidenceKind, Hypothesis
 from data import loader
-from evidence.hypotheses import candidates
+from evidence.hypotheses import candidates, family_of
 from evidence.timeline import build_timeline
 
 # (evidence id, description) -> {hypothesis id: prediction}; read by test_hypothesis
@@ -472,4 +472,25 @@ def prediction_for(evidence: Evidence, hypothesis_id: str) -> str | None:
 
 
 def gather_evidence(incident_id: str, hypothesis: Hypothesis) -> list[Evidence]:
-    return [e for e in catalogue(incident_id) if hypothesis.id in e.stance]
+    """Evidence bearing on one hypothesis.
+
+    A seeded hypothesis gets the catalogue items that carry its id. An LLM-proposed one is placed in a
+    signal family by family_of and takes that family's seeded stances and predictions under its own id,
+    so test_hypothesis scores it like any other. One that matches no family gets no evidence.
+    """
+    items = catalogue(incident_id)
+    if hypothesis.origin != "llm" or any(hypothesis.id in e.stance for e in items):
+        return [e for e in items if hypothesis.id in e.stance]
+    seeds = dict(candidates(incident_id, build_timeline(incident_id)))
+    seed = seeds.get(family_of(hypothesis))
+    if seed is None:
+        return []
+    mine = []
+    for e in items:  # catalogue() hands out copies, so the shared cache keeps its stances
+        if seed.id in e.stance:
+            e.stance[hypothesis.id] = e.stance[seed.id]
+            predictions = PREDICTIONS.setdefault((e.id, e.description), {})
+            if seed.id in predictions:
+                predictions[hypothesis.id] = predictions[seed.id]
+            mine.append(e)
+    return mine

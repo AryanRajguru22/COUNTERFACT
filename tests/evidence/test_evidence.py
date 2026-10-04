@@ -107,3 +107,40 @@ def test_evidence_is_deterministic_and_callers_cannot_corrupt_the_cache():
     first[0].stance["H1"] = "refutes"
     assert catalogue(INCIDENT) == catalogue(INCIDENT)
     assert catalogue(INCIDENT)[0].stance["H1"] == "supports"
+
+
+def _llm(hid, title, mechanism):
+    from contracts.models import Hypothesis
+    return Hypothesis(id=hid, title=title, mechanism=mechanism, origin="llm", status="proposed", confidence=0.25)
+
+
+def test_llm_hypothesis_inherits_the_evidence_of_the_family_it_describes():
+    _, hypotheses, _ = _setup()
+    h1 = next(h for h in hypotheses if h.id == "H1")
+    h5 = _llm("H5", "Connection pool starvation", "The payment-svc connection pool ran out of free connections.")
+    mine, seeded = gather_evidence(INCIDENT, h5), gather_evidence(INCIDENT, h1)
+    assert [e.id for e in mine] == [e.id for e in seeded]
+    assert all(e.stance["H5"] == e.stance["H1"] for e in mine)
+    assert all(prediction_for(e, "H5") == prediction_for(e, "H1") for e in mine)
+
+
+def test_llm_hypothesis_is_scored_like_the_seed_it_matches():
+    from evidence import test_hypothesis
+    _, hypotheses, _ = _setup()
+    h2 = next(h for h in hypotheses if h.id == "H2")
+    h6 = _llm("H6", "Bad release", "A bug shipped in the latest deploy breaks payments.")
+    assert test_hypothesis(h6, gather_evidence(INCIDENT, h6)).status == "rejected"
+    assert (test_hypothesis(h6, gather_evidence(INCIDENT, h6)).confidence
+            == test_hypothesis(h2, gather_evidence(INCIDENT, h2)).confidence)
+
+
+def test_llm_hypothesis_matching_no_family_gets_no_evidence_and_stays_proposed():
+    from evidence import test_hypothesis
+    h7 = _llm("H7", "Cosmic rays", "Bit flips in memory corrupted requests.")
+    assert gather_evidence(INCIDENT, h7) == []
+    assert test_hypothesis(h7, []).status == "proposed"
+
+
+def test_llm_hypotheses_do_not_leak_into_the_shared_catalogue():
+    gather_evidence(INCIDENT, _llm("H5", "Connection pool starvation", "The pool ran out of connections."))
+    assert all("H5" not in e.stance for e in catalogue(INCIDENT))
