@@ -95,7 +95,6 @@ export default {
         "fade-in": { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
         shimmer: { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
         "pulse-ring": { "0%": { boxShadow: "0 0 0 0 rgba(76,215,246,0.45)" }, "100%": { boxShadow: "0 0 0 10px rgba(76,215,246,0)" } },
-        "draw-path": { "0%": { strokeDashoffset: "var(--len, 1200)" }, "100%": { strokeDashoffset: "0" } },
         "grow-x": { "0%": { transform: "scaleX(0)" }, "100%": { transform: "scaleX(1)" } },
       },
       animation: {

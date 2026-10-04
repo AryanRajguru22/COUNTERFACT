@@ -39,6 +39,7 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [approver, setApprover] = useStoredString("counterfact.approver", "operator");
   const [lastRun, setLastRun] = useStoredString("counterfact.lastRun", "");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -71,7 +72,7 @@ export default function App() {
   // A stale id (the backend keeps runs in memory, so a restart forgets them) falls back to the start screen.
   useEffect(() => {
     if (run.gone && route.investigationId) {
-      setStartError(`Investigation ${route.investigationId} no longer exists on the backend (it restarts with an empty store). Start a new one.`);
+      setNotice(`Investigation ${route.investigationId} no longer exists on the backend, which keeps runs in memory and forgets them on restart. Start a new one.`);
       if (lastRun === route.investigationId) setLastRun("");
       navigate({ investigationId: null, view: "overview" });
     }
@@ -96,6 +97,7 @@ export default function App() {
   const start = async (incident: Incident, mode: InvestigationMode) => {
     setStarting(true);
     setStartError(null);
+    setNotice(null);
     try {
       const { investigation_id } = await api.startInvestigation(incident.id, mode);
       setLastRun(investigation_id);
@@ -111,6 +113,7 @@ export default function App() {
 
   const newRun = () => {
     setStartError(null);
+    setNotice(null);
     setFocusState(EMPTY_FOCUS);
     navigate({ investigationId: null, view: "overview" });
   };
@@ -141,10 +144,12 @@ export default function App() {
             backend={backend}
             starting={starting}
             error={startError}
+            notice={notice}
             lastRunId={lastRun || null}
             onStart={start}
             onResume={(id) => {
               setStartError(null);
+              setNotice(null);
               navigate({ investigationId: id, view: "overview" });
             }}
           />

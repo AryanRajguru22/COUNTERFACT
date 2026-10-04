@@ -13,3 +13,11 @@ Only this path has to work on stage. The rest can be cut.
 The agent reasoning panel runs alongside the whole flow.
 
 The first stretch goal is replanning. The operator approves I3, verification fails, and the system re-ranks.
+
+## Click path in the built UI
+
+1. Start screen: pick INC-2041, leave **Replay**, press **Investigate**. The UI follows the agent through Timeline, Hypotheses, Evidence, Root Cause and the Lab on its own; click any stage to take over, and press **Follow live** to catch up.
+2. Lab: select I5 to see the rollback change nothing, tick I1 and I3 to simulate the combination, and press **Replay history** to watch the playhead cross the breach.
+3. Gate: **Approve** the recommendation to reach *Resolved*, or pick the I3 row and approve it to see verification fail and the ranking shrink (the replan path). **Reject** needs a note.
+4. Verification: checks, stress test, applied changes, and **Download report**.
+

@@ -11,6 +11,7 @@ export default function StartScreen({
   backend,
   starting,
   error,
+  notice,
   lastRunId,
   onStart,
   onResume,
@@ -18,6 +19,8 @@ export default function StartScreen({
   backend: BackendState;
   starting: boolean;
   error: string | null;
+  /** Informational, e.g. the run in the URL no longer exists. */
+  notice: string | null;
   lastRunId: string | null;
   onStart: (incident: Incident, mode: InvestigationMode) => void;
   onResume: (id: string) => void;
@@ -54,6 +57,11 @@ export default function StartScreen({
       {backend.healthError && (
         <Notice tone="error" icon="report" title="The backend reports a broken fixture">
           {backend.healthError}
+        </Notice>
+      )}
+      {notice && (
+        <Notice tone="tertiary" icon="history_toggle_off" title="That investigation is gone">
+          {notice}
         </Notice>
       )}
       {error && (

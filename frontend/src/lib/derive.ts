@@ -3,7 +3,6 @@ import type {
   Evidence,
   Event,
   Hypothesis,
-  Incident,
   Intervention,
   Investigation,
   MetricSeries,
@@ -307,14 +306,3 @@ export function describeAction(action: { op: string; target: string; value?: num
 }
 
 // ---------------------------------------------------------------- misc
-
-export function incidentWindowEnd(incident: Incident): number {
-  return incident.window.minutes;
-}
-
-/** Steps worth showing as the replan history: approval decisions and re-rankings. */
-export function replanSteps(inv: Investigation) {
-  return inv.steps.filter(
-    (s) => s.kind === "decision" && (s.stage === "replanning" || s.stage === "failed" || /reject|approv|re-rank|verification/i.test(s.output_summary)),
-  );
-}

@@ -37,10 +37,6 @@ export function pctWhole(ratio: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
 
-export function minutes(n: number): string {
-  return `${n} min`;
-}
-
 /** 0.25 -> "15 min", 4 -> "4 h", 0.5 -> "30 min". */
 export function effort(hours: number): string {
   if (hours < 1) return `${Math.round(hours * 60)} min`;
