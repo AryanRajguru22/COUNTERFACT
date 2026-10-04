@@ -17,8 +17,10 @@ from contracts.models import (
     HealthResponse,
     Incident,
     Investigation,
+    MetricSeries,
     SimulateRequest,
     SimulationResult,
+    SystemModel,
 )
 
 router = APIRouter(prefix="/api")
@@ -51,6 +53,24 @@ def health() -> HealthResponse:
 @router.get("/incidents", response_model=list[Incident])
 def list_incidents() -> list[Incident]:
     return tools.list_incidents()
+
+
+@router.get("/incidents/{incident_id}/system-model", response_model=SystemModel)
+def get_system_model(incident_id: str) -> SystemModel:
+    # Read-only: the SLO, starting parameters and state changes the simulator replays. The UI draws the SLO line from it.
+    try:
+        return tools.call("load_system_model", incident_id)
+    except KeyError:
+        raise HTTPException(404, f"unknown incident: {incident_id}")
+
+
+@router.get("/incidents/{incident_id}/metrics", response_model=list[MetricSeries])
+def get_incident_metrics(incident_id: str) -> list[MetricSeries]:
+    # Read-only: the observed telemetry for the incident window, one series per metric.
+    try:
+        return tools.get_metrics(incident_id)
+    except KeyError:
+        raise HTTPException(404, f"unknown incident: {incident_id}")
 
 
 @router.post("/investigations", response_model=CreateInvestigationResponse)

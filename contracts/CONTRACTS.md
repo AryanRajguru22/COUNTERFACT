@@ -17,6 +17,8 @@ The conventions are:
 | --- | --- | --- | --- |
 | GET | `/health` | | `HealthResponse {ok, llm_mode}` |
 | GET | `/incidents` | | `Incident[]` |
+| GET | `/incidents/{id}/system-model` | | `SystemModel` (read-only; the UI draws the SLO line from it). 404 for an unknown incident. |
+| GET | `/incidents/{id}/metrics` | | `MetricSeries[]` (read-only observed telemetry, one series per metric). 404 for an unknown incident. |
 | POST | `/investigations` | `{incident_id, mode: "replay" \| "live"}` | `{investigation_id}`; runs in the background. `mode` defaults to `"replay"` and is persisted as `Investigation.mode`. |
 | GET | `/investigations/{id}` | | `Investigation`, including the persisted `mode` (frontend polls every 1 s) |
 | POST | `/investigations/{id}/approval` | `Approval` | `Investigation`. Approve leads to execute and verify; reject leads to replan. Returns 409 unless `awaiting_approval`. |
