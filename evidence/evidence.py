@@ -420,13 +420,26 @@ def _database_flavoured_errors(d: _Data) -> _Finding | None:
     )
 
 
-ANALYSES: tuple[Callable[[_Data], _Finding | None], ...] = (
-    _pool_wait_dominates, _pool_saturated, _capacity_shortfall, _onset_tracks_batch,
-    _batch_takes_connections, _retry_amplification,
-    _rollback_no_effect, _errors_on_both_versions, _new_version_was_healthy, _diff_off_the_failing_path,
-    _gateway_spans_normal, _errors_are_global,
-    _database_idle, _errors_are_client_side,
-    _deploy_before_onset, _gateway_notice, _database_flavoured_errors,
+# Each analysis owns a fixed evidence id, so ids never shift when an analysis finds nothing.
+# EV-01..EV-12 keep the meanings in the playbook (section 7.3); EV-13..EV-17 were added after it.
+ANALYSES: tuple[tuple[str, Callable[[_Data], _Finding | None]], ...] = (
+    ("EV-01", _pool_wait_dominates),
+    ("EV-02", _pool_saturated),
+    ("EV-03", _capacity_shortfall),
+    ("EV-04", _onset_tracks_batch),
+    ("EV-05", _rollback_no_effect),
+    ("EV-06", _errors_on_both_versions),
+    ("EV-07", _gateway_spans_normal),
+    ("EV-08", _errors_are_global),
+    ("EV-09", _database_idle),
+    ("EV-10", _deploy_before_onset),
+    ("EV-11", _gateway_notice),
+    ("EV-12", _database_flavoured_errors),
+    ("EV-13", _batch_takes_connections),
+    ("EV-14", _retry_amplification),
+    ("EV-15", _new_version_was_healthy),
+    ("EV-16", _diff_off_the_failing_path),
+    ("EV-17", _errors_are_client_side),
 )
 
 
@@ -435,18 +448,18 @@ def _catalogue(incident_id: str) -> tuple[Evidence, ...]:
     d = _Data(incident_id)
     ids = {family: h.id for family, h in candidates(incident_id, d.timeline)}
     items = []
-    for analysis in ANALYSES:
+    for evidence_id, analysis in ANALYSES:
         found = analysis(d)
         if found is None:
             continue
         stance = {ids[f]: s for f, s in found.stance.items() if f in ids}
         if not stance:
             continue
-        ev = Evidence(id=f"EV-{len(items) + 1:02d}", kind=found.kind, description=found.description,
+        ev = Evidence(id=evidence_id, kind=found.kind, description=found.description,
                       source_event_ids=found.events, stance=stance, weight=found.weight)
         PREDICTIONS[(ev.id, ev.description)] = {ids[f]: p for f, p in found.predictions.items() if f in ids}
         items.append(ev)
-    return tuple(items)
+    return tuple(sorted(items, key=lambda e: e.id))
 
 
 def catalogue(incident_id: str) -> list[Evidence]:

@@ -16,9 +16,41 @@ def _by(evidence, hypothesis_id, stance):
     return [e for e in evidence if e.stance.get(hypothesis_id) == stance]
 
 
-def test_evidence_ids_are_unique_and_sequential():
+def test_evidence_ids_are_unique_and_sorted():
     _, _, evidence = _setup()
-    assert [e.id for e in evidence] == [f"EV-{n:02d}" for n in range(1, len(evidence) + 1)]
+    assert [e.id for e in evidence] == [f"EV-{n:02d}" for n in range(1, 18)]
+
+
+def test_evidence_ids_keep_the_playbook_meanings():
+    _, _, evidence = _setup()
+    ev = {e.id: e for e in evidence}
+    assert "pool.acquire accounts for" in ev["EV-01"].description
+    assert "pinned at the 10-connection cap" in ev["EV-02"].description
+    assert ev["EV-03"].kind == "config_diff"
+    assert "after settlement-reconcile starts" in ev["EV-04"].description
+    assert ev["EV-05"].stance == {"H2": "refutes"} and "Rollback" in ev["EV-05"].description
+    assert ev["EV-06"].stance == {"H2": "refutes"} and "by version" in ev["EV-06"].description
+    assert ev["EV-07"].stance == {"H3": "refutes"} and "gateway.authorize p99" in ev["EV-07"].description
+    assert ev["EV-08"].stance == {"H3": "refutes"} and "regions" in ev["EV-08"].description
+    assert ev["EV-09"].stance["H4"] == "refutes" and "CPU" in ev["EV-09"].description
+    for eid, hid in (("EV-10", "H2"), ("EV-11", "H3"), ("EV-12", "H4")):
+        assert ev[eid].stance[hid] == "supports" and ev[eid].weight <= 0.4
+
+
+def test_an_analysis_that_finds_nothing_does_not_shift_later_ids(monkeypatch):
+    from evidence import evidence as engine
+
+    before = {e.id: e for e in catalogue(INCIDENT)}
+    first_id, _ = engine.ANALYSES[0]
+    monkeypatch.setattr(engine, "ANALYSES", ((first_id, lambda d: None),) + engine.ANALYSES[1:])
+    engine._catalogue.cache_clear()
+    try:
+        after = {e.id: e for e in catalogue(INCIDENT)}
+    finally:
+        monkeypatch.undo()
+        engine._catalogue.cache_clear()
+    assert first_id not in after
+    assert after == {k: v for k, v in before.items() if k != first_id}
 
 
 def test_evidence_is_anchored_to_timeline_events_and_known_hypotheses():
