@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import os
 import re
 import time
@@ -45,6 +46,11 @@ PROPOSE_KEY = "hypotheses.propose"  # replay key and template name
 MAX_PROPOSALS = 2
 PROPOSAL_PRIOR = 0.25  # the seeds' starting confidence
 TITLE_MAX, MECHANISM_MAX = 120, 600
+
+# Demo pacing (H20). Every stage change and every step except a tool call pauses once, so the replay demo takes
+# about 27 s to reach awaiting_approval and about 4 s from approval to resolved at the default.
+DEFAULT_STEP_DELAY_MS = 700
+RESTING_STAGES = frozenset({"awaiting_approval", "resolved", "failed"})  # already on screen: no pause after them
 
 
 class Store(Protocol):
@@ -192,7 +198,7 @@ class _Run:
         # The persisted Investigation.mode is authoritative, so resume runs in the mode the investigation started in.
         self.llm = LLMClient(self.inv.incident.id, self.inv.mode)
         self.fallback_logged = False
-        self.delay_s = int(os.environ.get("STEP_DELAY_MS", "600")) / 1000
+        self.delay_s = step_delay_s()
 
     def publish(self, pause: bool = True) -> None:
         self.store.put(self.inv)
@@ -201,7 +207,8 @@ class _Run:
 
     def stage(self, stage: Stage) -> None:
         self.inv.stage = stage
-        self.publish()
+        # Entering a resting stage needs no pause: it is already on screen and nothing follows it in this run.
+        self.publish(pause=stage not in RESTING_STAGES)
 
     def step(self, kind: str, summary: str, tool: str | None = None, input: dict[str, Any] | None = None) -> None:
         self.inv.steps.append(AgentStep(n=len(self.inv.steps) + 1, stage=self.inv.stage, kind=kind, tool=tool,
@@ -236,6 +243,18 @@ class _Run:
         self.inv.error = f"{type(error).__name__}: {error}"
         self.inv.stage = "failed"
         self.store.put(self.inv)
+
+
+def step_delay_s() -> float:
+    """STEP_DELAY_MS in seconds. A blank, non-numeric or non-finite value falls back to the default instead of
+    stranding the investigation in `created`; zero or a negative value means no pause."""
+    try:
+        ms = float(os.environ.get("STEP_DELAY_MS", "").strip() or DEFAULT_STEP_DELAY_MS)
+    except ValueError:
+        ms = DEFAULT_STEP_DELAY_MS
+    if not math.isfinite(ms):
+        ms = DEFAULT_STEP_DELAY_MS
+    return max(ms, 0.0) / 1000
 
 
 def llm_hypotheses_enabled() -> bool:
