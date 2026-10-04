@@ -94,28 +94,70 @@ def seed_hypotheses(incident_id: str, timeline: list[Event]) -> list[Hypothesis]
     return [h for _, h in candidates(incident_id, timeline)]
 
 
+DECISIVE = 0.85  # one refutation at least this strong falsifies a hypothesis on its own
+SMOOTHING = 0.5  # keeps confidence below 1 when evidence is thin
+
+
+def _order(items: list[Evidence]) -> list[Evidence]:
+    return sorted(items, key=lambda e: (-e.weight, e.id))
+
+
+def _reason(supporting: list[Evidence], refuting: list[Evidence], decisive: Evidence | None) -> str:
+    support, refute = sum(e.weight for e in supporting), sum(e.weight for e in refuting)
+    lead = decisive or refuting[0]
+    others = [e.id for e in refuting if e is not lead]
+    reason = f"{'Falsified' if decisive else 'Outweighed'} by {lead.id}: {lead.description.rstrip('.')}."
+    if others:
+        reason += f" Also refuted by {', '.join(others)}"
+    reason += f" (refuting weight {refute:.2f} vs supporting {support:.2f})."
+    if supporting:
+        reason += (f" The only support ({', '.join(e.id for e in supporting)}) is circumstantial: "
+                   f"{supporting[0].description.rstrip('.')}.")
+    return reason
+
+
+def _decisive(refuting: list[Evidence]) -> Evidence | None:
+    """The strongest decisive refutation, preferring one aimed at this hypothesis alone."""
+    strong = [e for e in refuting if e.weight >= DECISIVE]
+    targeted = [e for e in strong if list(e.stance.values()).count("refutes") == 1]
+    return (targeted or strong or [None])[0]
+
+
 def test_hypothesis(hypothesis: Hypothesis, evidence: list[Evidence]) -> Hypothesis:
-    supporting = [e for e in evidence if e.stance.get(hypothesis.id) == "supports"]
-    refuting = [e for e in evidence if e.stance.get(hypothesis.id) == "refutes"]
-    support = sum(e.weight for e in supporting)
-    refute = sum(e.weight for e in refuting)
-    rejected = refute > support
-    confidence = 0.0 if support + refute == 0 else min(0.95, support / (support + refute))
-    strongest_refutation = max(refuting, key=lambda e: e.weight, default=None)
+    """Check each prediction the hypothesis makes against the evidence, then support or reject it.
+
+    A hypothesis is rejected when any refutation is decisive (weight >= DECISIVE) or when the refuting
+    weight outweighs the supporting weight. Confidence is support / (support + refute + SMOOTHING).
+    """
+    from evidence.evidence import prediction_for  # evidence.py imports this module
+
+    relevant = [e for e in evidence if e.stance.get(hypothesis.id) in ("supports", "refutes")]
+    supporting = _order([e for e in relevant if e.stance[hypothesis.id] == "supports"])
+    refuting = _order([e for e in relevant if e.stance[hypothesis.id] == "refutes"])
+    support, refute = sum(e.weight for e in supporting), sum(e.weight for e in refuting)
+    decisive = _decisive(refuting)
+    rejected = bool(refuting) and (decisive is not None or refute > support)
+
+    if not relevant:
+        status, confidence = "testing", hypothesis.confidence
+    else:
+        status = "rejected" if rejected else "supported"
+        confidence = round(min(0.95, support / (support + refute + SMOOTHING)), 2)
+
     return hypothesis.model_copy(update={
-        "status": "rejected" if rejected else "supported",
-        "confidence": round(confidence, 2),
+        "status": status,
+        "confidence": confidence,
         "supporting_evidence_ids": [e.id for e in supporting],
         "refuting_evidence_ids": [e.id for e in refuting],
         "tests": [
             HypothesisTest(
-                prediction=f"If {hypothesis.id} is true, {e.id} should support it",
+                prediction=prediction_for(e, hypothesis.id) or f"If {hypothesis.id} is true, {e.id} should support it",
                 observed=e.description,
                 passed=e.stance[hypothesis.id] == "supports",
             )
-            for e in supporting + refuting
+            for e in sorted(relevant, key=lambda e: e.id)
         ],
-        "rejection_reason": strongest_refutation.description if rejected and strongest_refutation else None,
+        "rejection_reason": _reason(supporting, refuting, decisive) if rejected else None,
     })
 
 
