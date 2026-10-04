@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 def _no_agent_delay(monkeypatch):
     monkeypatch.setenv("STEP_DELAY_MS", "0")
     monkeypatch.setenv("LLM_MODE", "replay")
+    monkeypatch.setenv("RECORD", "0")  # "0", not unset: backend/main.py's .env loader never overrides a set var
 
 
 @pytest.fixture
