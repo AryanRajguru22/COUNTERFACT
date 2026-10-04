@@ -1,0 +1,79 @@
+[
+  {
+    "id": "CHG-870",
+    "type": "schedule_change",
+    "ts": "2026-09-25T10:12:00Z",
+    "t": null,
+    "service": "settlement-reconcile",
+    "author": "finance-ops",
+    "approval": "manual",
+    "summary": "Move settlement-reconcile from 02:00 to 14:30 UTC (overnight maintenance window conflict)",
+    "change": {
+      "key": "schedule",
+      "from": "0 2 * * *",
+      "to": "30 14 * * *"
+    },
+    "capacity_review": false
+  },
+  {
+    "id": "CHG-881",
+    "type": "config_change",
+    "ts": "2026-09-28T14:05:00Z",
+    "t": 5,
+    "service": "payment-svc",
+    "author": "platform-bot",
+    "approval": "auto (cost-optimisation policy)",
+    "summary": "Reduce payment-svc db.pool.max 50 -> 10 (cost optimisation)",
+    "change": {
+      "key": "db.pool.max",
+      "from": 50,
+      "to": 10
+    },
+    "capacity_review": false
+  },
+  {
+    "id": "DEP-7101",
+    "type": "deploy",
+    "ts": "2026-09-28T14:20:00Z",
+    "t": 20,
+    "completed_t": 22,
+    "service": "payment-svc",
+    "author": "ci-pipeline",
+    "approval": "manual",
+    "summary": "Deploy payment-svc v2.4.1 (rolling, 3 pods)",
+    "change": {
+      "key": "version",
+      "from": "v2.4.0",
+      "to": "v2.4.1"
+    },
+    "commits": [
+      "a91f3c2 Render receipt PDFs asynchronously",
+      "4be07d1 Bump jackson-databind 2.17.1 -> 2.17.2",
+      "c22e9a0 Add card_network label to checkout metrics"
+    ],
+    "files_changed": [
+      "src/receipts/ReceiptRenderer.java",
+      "src/receipts/ReceiptQueue.java",
+      "build.gradle",
+      "src/metrics/CheckoutMetrics.java"
+    ]
+  },
+  {
+    "id": "DEP-7102",
+    "type": "rollback",
+    "ts": "2026-09-28T14:40:00Z",
+    "t": 40,
+    "completed_t": 42,
+    "service": "payment-svc",
+    "author": "oncall-sre",
+    "approval": "incident commander",
+    "summary": "Roll back payment-svc to v2.4.0 during INC-2041",
+    "change": {
+      "key": "version",
+      "from": "v2.4.1",
+      "to": "v2.4.0"
+    },
+    "commits": [],
+    "files_changed": []
+  }
+]

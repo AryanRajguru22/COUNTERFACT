@@ -51,3 +51,34 @@ def load_system_model_json(incident_id: str) -> SystemModel:
 def load_ground_truth(incident_id: str) -> dict[str, Any]:
     """Tests only. The agent must never read ground truth."""
     return load_json(incident_id, "ground_truth.json")
+
+
+# ---------------------------------------------------------------- raw telemetry (not contract models)
+# These files feed the evidence engine only. They are plain JSON records, so they stay outside
+# contracts/models.py; incidents without them simply return empty data.
+
+
+def _optional(incident_id: str, name: str, default: Any) -> Any:
+    try:
+        return load_json(incident_id, name)
+    except FileNotFoundError:
+        return default
+
+
+def load_deploys(incident_id: str) -> list[dict[str, Any]]:
+    """Change records: deploys, rollbacks, config and schedule changes."""
+    return _optional(incident_id, "deploys.json", [])
+
+
+def load_config(incident_id: str) -> dict[str, dict[str, Any]]:
+    """Config snapshot per service at incident time."""
+    return _optional(incident_id, "config.json", {})
+
+
+def load_logs(incident_id: str) -> list[dict[str, Any]]:
+    return _optional(incident_id, "logs.json", [])
+
+
+def load_traces(incident_id: str) -> list[dict[str, Any]]:
+    """Sampled request traces, each with spans [{name, service, duration_ms, error?}]."""
+    return _optional(incident_id, "traces.json", [])
