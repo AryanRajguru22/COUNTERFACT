@@ -1,18 +1,22 @@
 """The LLM client defaults to replay mode and needs no key or network."""
 
+import json
+
 import httpx
 import pytest
 
 from agent import llm
-from agent.llm import LLMClient, llm_mode
+from agent.llm import RECORDINGS_DIR, LLMClient, llm_mode
 
-REPLAY_TIMELINE = "Rebuilding the timeline"
+# Expected replay text comes from the recording itself, so a legitimate re-recording keeps these tests valid.
+RECORDED = json.loads((RECORDINGS_DIR / "INC-2041.json").read_text(encoding="utf-8"))
+REPLAY_TIMELINE = RECORDED["thought.timeline"]
 
 
 def test_replay_is_default(monkeypatch):
     monkeypatch.delenv("LLM_MODE", raising=False)
     assert llm_mode() == "replay"
-    assert LLMClient("INC-2041").complete("thought.timeline").startswith(REPLAY_TIMELINE)
+    assert LLMClient("INC-2041").complete("thought.timeline") == REPLAY_TIMELINE
 
 
 def test_replay_missing_key_returns_empty():
@@ -53,7 +57,7 @@ def test_live_without_config_falls_back_to_replay(monkeypatch):
     monkeypatch.delenv("LLM_MODEL", raising=False)
     calls = _fake_post(monkeypatch, _connect_error)
     client = LLMClient("INC-2041", "live")
-    assert client.complete("thought.timeline").startswith(REPLAY_TIMELINE)
+    assert client.complete("thought.timeline") == REPLAY_TIMELINE
     assert client.mode == "live"
     assert "LLM_BASE_URL" in client.fallback_reason
     assert calls == []
@@ -68,10 +72,10 @@ def test_live_without_config_falls_back_to_replay(monkeypatch):
 def test_live_failure_falls_back_and_stays_on_replay(monkeypatch, live_config, respond):
     calls = _fake_post(monkeypatch, respond)
     client = LLMClient("INC-2041", "live")
-    assert client.complete("thought.timeline").startswith(REPLAY_TIMELINE)
+    assert client.complete("thought.timeline") == REPLAY_TIMELINE
     assert client.fallback_reason
     assert client.mode == "live"
-    assert client.complete("thought.hypotheses").startswith("Four explanations")
+    assert client.complete("thought.hypotheses") == RECORDED["thought.hypotheses"]
     assert len(calls) == 1  # no second live attempt once the client has fallen back
 
 

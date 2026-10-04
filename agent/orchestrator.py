@@ -312,6 +312,7 @@ def _recommend(r: _Run) -> None:
 def resume_after_approval(investigation_id: str, approval: Approval, store: Store, mode: str | None = None) -> None:
     # `mode` is kept only for signature compatibility; Investigation.mode is the source of truth.
     r = _Run(investigation_id, store)
+    r.llm.record = False  # only the investigation run is recorded; a replan must not overwrite its narration
     try:
         _act_on_approval(r, approval)
     except Exception as error:
