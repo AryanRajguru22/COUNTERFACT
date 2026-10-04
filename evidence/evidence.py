@@ -15,6 +15,7 @@ The catalogue is built once per incident and is fully deterministic (no clock, r
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from functools import lru_cache
 from statistics import mean
 from typing import Any, Callable
@@ -43,6 +44,7 @@ class _Data:
 
     def __init__(self, incident_id: str):
         self.timeline = build_timeline(incident_id)
+        self.start = datetime.fromisoformat(loader.load_incident(incident_id).window.start.replace("Z", "+00:00"))
         self.metrics = {s.name: {p.t: p.value for p in s.points} for s in loader.load_metrics(incident_id)}
         self.model = loader.load_system_model_json(incident_id)
         self.traces = loader.load_traces(incident_id)
@@ -52,6 +54,14 @@ class _Data:
         slo = self.model.slo.max_error_rate
         self.errors = self.metrics.get("checkout_5xx_rate", {})
         self.breach = [t for t, v in sorted(self.errors.items()) if v > slo]
+
+    def clock(self, t: int) -> str:
+        """Wall-clock HH:MM (UTC) of minute t of the incident window."""
+        return (self.start + timedelta(minutes=t)).strftime("%H:%M")
+
+    def change(self, kind: str) -> dict[str, Any] | None:
+        """The first change record of a type (deploy, rollback, config_change, ...)."""
+        return next((c for c in self.changes.values() if c["type"] == kind), None)
 
     def event(self, match: Callable[[Event], bool]) -> Event | None:
         return next((e for e in self.timeline if match(e)), None)
@@ -75,10 +85,6 @@ def _span(trace: dict[str, Any], name: str) -> int | None:
 def _p99(values: list[float]) -> float:
     ordered = sorted(values)
     return ordered[max(0, -(-len(ordered) * 99 // 100) - 1)] if ordered else 0.0
-
-
-def _clock(t: int) -> str:
-    return f"{14 + t // 60:02d}:{t % 60:02d}"
 
 
 def _w(x: float) -> float:
@@ -129,7 +135,8 @@ def _pool_saturated(d: _Data) -> _Finding | None:
 
 
 def _capacity_shortfall(d: _Data) -> _Finding | None:
-    cut = d.changes.get("CHG-881") or next((c for c in d.changes.values() if "pool" in c["change"]["key"]), None)
+    cut = next((c for c in d.changes.values() if "pool" in c["change"]["key"]
+                and float(c["change"]["to"]) < float(c["change"]["from"])), None)
     if not cut:
         return None
     params = d.model.params
@@ -160,11 +167,13 @@ def _onset_tracks_batch(d: _Data) -> _Finding | None:
     lag_on, lag_off = d.breach[0] - start.t, d.breach[-1] + 1 - end.t
     quiet = sum(1 for t in range(cut.t, start.t) if d.errors.get(t, 0) <= d.model.slo.max_error_rate) if cut else 0
     tight = 0 <= lag_on <= 3 and 0 <= lag_off <= 3
+    job = start.attributes.get("job", "the batch job")
+    verdict = (f"The pool cut alone ran for {quiet} minutes with no breach, so the cut and the batch job together "
+               "are needed." if tight and quiet else "The breach does not track the batch job closely.")
     return _Finding(
         "metric",
-        f"The breach starts {lag_on} min after settlement-reconcile starts ({_clock(start.t)}) and ends "
-        f"{lag_off} min after it releases its connections ({_clock(end.t)}). The pool cut alone ran for "
-        f"{quiet} minutes with no breach, so the cut and the batch job together are needed.",
+        f"The breach starts {lag_on} min after {job} starts ({d.clock(start.t)}) and ends "
+        f"{lag_off} min after it releases its connections ({d.clock(end.t)}). {verdict}",
         d.ids(cut, start, end, d.event(lambda e: e.kind == "alert")),
         0.8 if tight else 0.3,
         {"pool": "supports" if tight else "neutral"},
@@ -173,12 +182,14 @@ def _onset_tracks_batch(d: _Data) -> _Finding | None:
 
 
 def _batch_takes_connections(d: _Data) -> _Finding | None:
-    row = next((r for r in d.logs if r["service"] == "settlement-reconcile" and r.get("connections")), None)
+    start = d.event(lambda e: e.kind == "job_start")
+    job = start.attributes.get("job") if start else None
+    row = next((r for r in d.logs if job and r["service"] == job and r.get("connections")), None)
     if not row:
         return None
     return _Finding(
         "log",
-        f"settlement-reconcile log at {row['ts'][11:19]}: \"{row['message']}\", leaving "
+        f"{job} log at {row['ts'][11:19]}: \"{row['message']}\", leaving "
         f"{d.config.get('payment-svc', {}).get('db.pool.max', 0) - row['connections']} connections for checkout traffic.",
         d.ids(d.event(lambda e: e.kind == "job_start")),
         0.85,
@@ -205,26 +216,27 @@ def _retry_amplification(d: _Data) -> _Finding | None:
     )
 
 
-# ---------------------------------------------------------------- analyses against a v2.4.1 regression
+# ---------------------------------------------------------------- analyses against a code regression
 
 
 def _rollback_no_effect(d: _Data) -> _Finding | None:
-    rb = next((c for c in d.changes.values() if c["type"] == "rollback"), None)
+    rb = d.change("rollback")
     if not rb:
         return None
     before = mean(d.errors[t] for t in range(rb["t"] - 5, rb["t"]))
     after = mean(d.errors[t] for t in range(rb["completed_t"] + 1, rb["completed_t"] + 6))
     change = (after - before) / before if before else 0.0
     unchanged = abs(change) < 0.15
+    bad, good = rb["change"]["from"], rb["change"]["to"]
     return _Finding(
         "deploy_record",
-        f"Rollback {rb['id']} to {rb['change']['to']} completed at {_clock(rb['completed_t'])}; checkout 5xx "
+        f"Rollback {rb['id']} to {good} completed at {d.clock(rb['completed_t'])}; checkout 5xx "
         f"averaged {before:.1%} in the 5 minutes before and {after:.1%} in the 5 minutes after "
-        f"({change:+.0%}). Removing v2.4.1 did not reduce errors.",
+        f"({change:+.0%}). Removing {bad} {'did not reduce errors' if unchanged else 'reduced errors'}.",
         d.ids(d.event(lambda e: e.attributes.get("rollback"))),
         _w(0.95 - abs(change)) if unchanged else 0.2,
         {"regression": "refutes" if unchanged else "supports"},
-        {"regression": "Rolling back to v2.4.0 brings the error rate down"},
+        {"regression": f"Rolling back to {good} brings the error rate down"},
     )
 
 
@@ -237,41 +249,45 @@ def _errors_on_both_versions(d: _Data) -> _Finding | None:
     if len(rates) < 2:
         return None
     gap = max(rates.values()) - min(rates.values())
+    dep = d.change("deploy")
+    new, old = (dep["change"]["to"], dep["change"]["from"]) if dep else ("the new version", "the old version")
     return _Finding(
         "trace",
         "Breach-window failure rate by version in sampled traces: "
         + ", ".join(f"{v} {r:.0%}" for v, r in rates.items())
-        + ". Both versions fail at a similar rate, and the old version fails as much as the new one.",
+        + (". Both versions fail at a similar rate, and the old version fails as much as the new one." if gap < 0.15
+           else ". The versions fail at clearly different rates."),
         d.ids(d.event(lambda e: e.kind == "deploy" and not e.attributes.get("rollback")),
               d.event(lambda e: e.attributes.get("rollback"))),
         _w(0.85 - gap),
         {"regression": "refutes" if gap < 0.15 else "supports"},
-        {"regression": "Requests served by v2.4.1 fail far more often than those served by v2.4.0"},
+        {"regression": f"Requests served by {new} fail far more often than those served by {old}"},
     )
 
 
 def _new_version_was_healthy(d: _Data) -> _Finding | None:
-    dep = next((c for c in d.changes.values() if c["type"] == "deploy"), None)
+    dep = d.change("deploy")
     start = d.event(lambda e: e.kind == "job_start")
     if not (dep and start):
         return None
     window = [x for x in d.traces if dep["completed_t"] <= x["t"] < start.t and x["version"] == dep["change"]["to"]]
     failed = sum(x["status"] == "error" for x in window)
     peak = max(d.errors[t] for t in range(dep["completed_t"], start.t))
+    healthy = failed == 0 and peak <= d.model.slo.max_error_rate
     return _Finding(
         "metric",
-        f"{dep['change']['to']} served all traffic from {_clock(dep['completed_t'])} to {_clock(start.t)} "
-        f"with checkout 5xx at most {peak:.1%} and {failed} failures in {len(window)} sampled traces. The errors "
-        "started only when the batch job did.",
+        f"{dep['change']['to']} served all traffic from {d.clock(dep['completed_t'])} to {d.clock(start.t)} "
+        f"with checkout 5xx at most {peak:.1%} and {failed} failures in {len(window)} sampled traces. "
+        + ("The errors started only when the batch job did." if healthy else "It was already failing before the batch job."),
         d.ids(d.event(lambda e: e.kind == "deploy" and not e.attributes.get("rollback")), start),
-        0.8 if failed == 0 and peak <= d.model.slo.max_error_rate else 0.2,
+        0.8 if healthy else 0.2,
         {"regression": "refutes" if failed == 0 else "supports"},
-        {"regression": "Errors begin as soon as v2.4.1 takes traffic"},
+        {"regression": f"Errors begin as soon as {dep['change']['to']} takes traffic"},
     )
 
 
 def _diff_off_the_failing_path(d: _Data) -> _Finding | None:
-    dep = next((c for c in d.changes.values() if c["type"] == "deploy"), None)
+    dep = d.change("deploy")
     if not dep:
         return None
     hot = ("pool", "db", "datasource", "payment", "authorize", "gateway", "retry")
@@ -284,7 +300,7 @@ def _diff_off_the_failing_path(d: _Data) -> _Finding | None:
         d.ids(d.event(lambda e: e.kind == "deploy" and not e.attributes.get("rollback"))),
         0.6,
         {"regression": "refutes" if not touched else "supports"},
-        {"regression": "The v2.4.1 diff changes code on the checkout payment path"},
+        {"regression": f"The {dep['change']['to']} diff changes code on the checkout payment path"},
     )
 
 
@@ -349,8 +365,9 @@ def _database_idle(d: _Data) -> _Finding | None:
     return _Finding(
         "metric",
         f"payments-db CPU peaks at {peak_cpu:.0f}% and holds {peak_conns:.0f} of {limit} server connections "
-        f"during the breach; db.query p99 is {_p99(during):.0f} ms vs {_p99(base):.0f} ms before. The database "
-        "has spare capacity, so the client is starved for connections, not the server.",
+        f"during the breach; db.query p99 is {_p99(during):.0f} ms vs {_p99(base):.0f} ms before. "
+        + ("The database has spare capacity, so the client is starved for connections, not the server." if idle
+           else "The database is under heavy load."),
         [],
         0.9 if idle else 0.2,
         {"database": "refutes" if idle else "supports", "pool": "supports" if idle else "neutral"},
@@ -366,8 +383,8 @@ def _errors_are_client_side(d: _Data) -> _Finding | None:
         return None
     return _Finding(
         "log",
-        f"All {len(pool_errors)} connection errors come from payment-svc's HikariPool-1 client "
-        f"(\"active=10, idle=0\", {pool_errors[0].get('exception', 'pool timeout')}); payments-db logged "
+        f"All {len(pool_errors)} connection errors come from the {pool_errors[0]['service']} client pool "
+        f"(\"{pool_errors[0]['message']}\", {pool_errors[0].get('exception', 'pool timeout')}); payments-db logged "
         f"{len(db_errors)} warnings or errors during the incident.",
         d.ids(d.event(lambda e: e.summary.startswith("First pool-acquire timeout"))),
         0.75 if not db_errors else 0.2,
@@ -386,7 +403,7 @@ def _deploy_before_onset(d: _Data) -> _Finding | None:
         return None
     return _Finding(
         "deploy_record",
-        f"{dep.attributes.get('version')} was deployed at {_clock(dep.t)}, {d.breach[0] - dep.t} minutes "
+        f"{dep.attributes.get('version')} was deployed at {d.clock(dep.t)}, {d.breach[0] - dep.t} minutes "
         "before the breach began.",
         [dep.id], 0.3, {"regression": "supports"},
         {"regression": "A deploy lands shortly before the errors start"},
@@ -399,7 +416,7 @@ def _gateway_notice(d: _Data) -> _Finding | None:
         return None
     return _Finding(
         "external",
-        f"The payment gateway provider posted a latency notice at {_clock(notice.t)}, "
+        f"The payment gateway provider posted a latency notice at {d.clock(notice.t)}, "
         f"{d.breach[0] - notice.t} minutes before the breach began.",
         [notice.id], 0.3, {"gateway": "supports"},
         {"gateway": "The provider reports degradation around the time errors start"},
