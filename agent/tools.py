@@ -23,6 +23,36 @@ def get_incident(incident_id: str) -> Incident:
     return loader.load_incident(incident_id)
 
 
+class FixtureError(Exception):
+    """An incident fixture the engines read is missing, unreadable or the wrong shape."""
+
+
+# Every fixture file the engines read, with its loader. The first four are the frozen data contract and must
+# exist. The raw telemetry is optional by design (the loader returns empty data without it) but must have the
+# right top-level shape when present. ground_truth.json is deliberately absent: only tests may read it.
+_FIXTURES: tuple[tuple[str, Callable, type | None], ...] = (
+    ("incident.json", loader.load_incident, None),
+    ("events.json", loader.load_events, None),
+    ("metrics.json", loader.load_metrics, None),
+    ("system_model.json", loader.load_system_model_json, None),
+    ("deploys.json", loader.load_deploys, list),
+    ("config.json", loader.load_config, dict),
+    ("logs.json", loader.load_logs, list),
+    ("traces.json", loader.load_traces, list),
+)
+
+
+def check_fixtures(incident_id: str) -> None:
+    """Load every fixture the engines read, so a broken file fails /api/health instead of an investigation."""
+    for name, load, shape in _FIXTURES:
+        try:
+            data = load(incident_id)
+        except Exception as error:
+            raise FixtureError(f"{incident_id} {name}: {type(error).__name__}: {error}") from error
+        if shape is not None and not isinstance(data, shape):
+            raise FixtureError(f"{incident_id} {name}: expected a JSON {shape.__name__}, got {type(data).__name__}")
+
+
 TOOLS: dict[str, Callable] = {
     # evidence engine (Vinayak)
     "build_timeline": evidence.build_timeline,

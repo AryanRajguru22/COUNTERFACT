@@ -27,7 +27,9 @@ from contracts.models import (
     Hypothesis,
     Investigation,
     RankedIntervention,
+    SimulationResult,
     Stage,
+    SystemModel,
     VerificationCheck,
     VerificationResult,
 )
@@ -83,6 +85,24 @@ def _ranked(inv: Investigation, r: RankedIntervention) -> str:
     outcome = "prevents" if r.prevented else "does not prevent"
     return f"{r.rank}. {r.intervention_id} {_intervention_title(inv, r.intervention_id)} " \
            f"(score {r.score}, {outcome} the breach)"
+
+
+def _ranking(inv: Investigation) -> str:
+    return "; ".join(_ranked(inv, r) for r in inv.ranking) or "no interventions left"
+
+
+def _model_summary(model: SystemModel) -> str:
+    return (f"{len(model.params)} parameters, {len(model.param_changes)} recorded state changes, "
+            f"{len(model.exogenous.demand_rps)} minutes of demand; SLO: error rate at most "
+            f"{model.slo.max_error_rate}, at most {model.slo.max_breach_minutes} breach minutes")
+
+
+def _simulation_summary(inv: Investigation, sim: SimulationResult) -> str:
+    impact = f"{sim.breach_minutes} breach minutes, peak error rate {sim.peak_error_rate:.1%}"
+    if not sim.intervention_ids:
+        return f"Baseline (no intervention): {impact}"
+    names = ", ".join(f"{i} {_intervention_title(inv, i)}" for i in sim.intervention_ids)
+    return f"{names}: {'prevents' if sim.prevented else 'does not prevent'} the breach ({impact})"
 
 
 def _replan_context(inv: Investigation) -> str:
@@ -259,6 +279,9 @@ def _investigate(r: _Run) -> None:
                         label=f"Testing {h.id} {h.title} against {len(relevant)} evidence items")
         tested.append(result)
         r.step("tool_result", _verdict(result), tool="test_hypothesis")
+        if result.status == "rejected":
+            reason = result.rejection_reason or "the refuting evidence outweighs the support"
+            r.step("decision", f"Rejected {result.id} {result.title}: {reason}", tool="test_hypothesis")
     inv.hypotheses = tested
 
     r.stage("root_cause")
@@ -268,22 +291,30 @@ def _investigate(r: _Run) -> None:
                             timeline=inv.timeline,
                             label=f"Determining the root cause from {surviving} surviving "
                                   f"{'hypothesis' if surviving == 1 else 'hypotheses'}")
-    inv.hypotheses = [h.model_copy(update={"status": "confirmed"}) if h.id == inv.root_cause.hypothesis_id else h
-                      for h in inv.hypotheses]
     rc = inv.root_cause
+    r.step("tool_result", f"{rc.hypothesis_id} {_hypothesis_title(inv, rc.hypothesis_id)} is the strongest "
+           f"surviving hypothesis (confidence {rc.confidence}); causal chain of {len(rc.causal_chain)} links",
+           tool="determine_root_cause")
+    inv.hypotheses = [h.model_copy(update={"status": "confirmed"}) if h.id == rc.hypothesis_id else h
+                      for h in inv.hypotheses]
     r.step("decision", f"Root cause {rc.hypothesis_id} {_hypothesis_title(inv, rc.hypothesis_id)} "
            f"(confidence {rc.confidence}): {rc.statement}", tool="determine_root_cause")
 
     r.stage("counterfactual")
     r.think("counterfactual")
     model = r.tool("load_system_model", incident_id=incident_id, label=f"Loading the system model for {incident_id}")
+    r.step("tool_result", _model_summary(model), tool="load_system_model")
     inv.interventions = r.tool("generate_interventions", root_cause=inv.root_cause, model=model,
                                label=f"Generating candidate interventions for root cause {rc.hypothesis_id}")
+    r.step("tool_result", f"{len(inv.interventions)} candidate interventions: " + "; ".join(
+        f"{i.id} {i.title} ({i.category}, {i.risk} risk)" for i in inv.interventions), tool="generate_interventions")
     inv.simulations = [r.tool("simulate", model=model, interventions=[], seed=0,
                               label="Simulating the baseline (no intervention)")]
+    r.step("tool_result", _simulation_summary(inv, inv.simulations[0]), tool="simulate")
     for intervention in inv.interventions:
         inv.simulations.append(r.tool("simulate", model=model, interventions=[intervention], seed=0,
                                       label=f"Simulating {intervention.id} {intervention.title}"))
+        r.step("tool_result", _simulation_summary(inv, inv.simulations[-1]), tool="simulate")
     prevented = [s.intervention_ids[0] for s in inv.simulations[1:] if s.prevented]
     missed = [s.intervention_ids[0] for s in inv.simulations[1:] if not s.prevented]
     r.step("tool_result", f"Baseline: {inv.simulations[0].breach_minutes} breach minutes; "
@@ -291,7 +322,7 @@ def _investigate(r: _Run) -> None:
            f"(prevented by {', '.join(prevented) or 'none'}; not by {', '.join(missed) or 'none'})", tool="simulate")
     inv.ranking = r.tool("rank", results=inv.simulations, interventions=inv.interventions,
                          label=f"Ranking {len(inv.interventions)} interventions")
-    r.step("tool_result", "Ranked: " + "; ".join(_ranked(inv, x) for x in inv.ranking), tool="rank")
+    r.step("tool_result", "Ranked: " + _ranking(inv), tool="rank")
     _recommend(r)
 
 
@@ -312,6 +343,7 @@ def _recommend(r: _Run) -> None:
 def resume_after_approval(investigation_id: str, approval: Approval, store: Store, mode: str | None = None) -> None:
     # `mode` is kept only for signature compatibility; Investigation.mode is the source of truth.
     r = _Run(investigation_id, store)
+    r.llm.record = False  # only the investigation run is recorded; a replan must not overwrite its narration
     try:
         _act_on_approval(r, approval)
     except Exception as error:
@@ -322,7 +354,9 @@ def _act_on_approval(r: _Run, approval: Approval) -> None:
     inv = r.inv
     inv.approval = approval
     inv.attempts += 1
-    model = r.tool("load_system_model", incident_id=inv.incident.id)
+    model = r.tool("load_system_model", incident_id=inv.incident.id,
+                   label=f"Loading the system model for {inv.incident.id}")
+    r.step("tool_result", _model_summary(model), tool="load_system_model")
 
     if approval.decision == "rejected":
         r.stage("replanning")
@@ -331,12 +365,18 @@ def _act_on_approval(r: _Run, approval: Approval) -> None:
             intervention_id=approval.intervention_id, passed=False, stress_test_passed=False,
             checks=[VerificationCheck(name="human approval", expected="approved", observed="rejected", passed=False)],
         )
-        inv.ranking = r.tool("replan", failed=rejected, ranking=inv.ranking, model=model)
+        inv.ranking = r.tool("replan", failed=rejected, ranking=inv.ranking, model=model,
+                             label=f"Re-ranking after {approval.intervention_id} was rejected")
+        r.step("tool_result", "Re-ranked: " + _ranking(inv), tool="replan")
         _recommend(r)
         return
 
     r.stage("executing")
-    intervention = r.tool("get_intervention", intervention_id=approval.intervention_id)
+    intervention = r.tool("get_intervention", intervention_id=approval.intervention_id,
+                          label=f"Looking up {approval.intervention_id}")
+    action = intervention.action
+    r.step("tool_result", f"{intervention.id} {intervention.title}: {action.op} {action.target}"
+           + ("" if action.value is None else f" = {action.value}"), tool="get_intervention")
     inv.execution = r.tool("execute", intervention=intervention, model=model)
     r.step("tool_result", f"{intervention.id} {inv.execution.status} in the simulated environment", tool="execute")
 
@@ -348,5 +388,7 @@ def _act_on_approval(r: _Run, approval: Approval) -> None:
         r.stage("resolved")
         return
     r.stage("replanning")
-    inv.ranking = r.tool("replan", failed=inv.verification, ranking=inv.ranking, model=model)
+    inv.ranking = r.tool("replan", failed=inv.verification, ranking=inv.ranking, model=model,
+                         label=f"Re-ranking after {inv.verification.intervention_id} failed verification")
+    r.step("tool_result", "Re-ranked: " + _ranking(inv), tool="replan")
     _recommend(r)
