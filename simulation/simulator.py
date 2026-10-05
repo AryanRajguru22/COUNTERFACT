@@ -23,8 +23,10 @@ import math
 from contracts.models import Intervention, SimSeries, SimulationResult, SystemModel
 from simulation.replay import replay
 
-# Calibration (INC-2041): the batch job keeps about a quarter of its connections checked out on average, which
-# reproduces the observed 22 breach minutes and ~38% peak. A `batch_conn_duty` param overrides it.
+# Calibration (H11, INC-2041): the share of time the batch job's connections are checked out. With every
+# connection busy (duty 1.0), 2 connections would face ~8.2 erlangs, and errors would be >= 75% instead of the
+# observed ~38%. 0.26 keeps the baseline inside 22 +/- 3 breach minutes and a 0.38 +/- 0.05 peak, which holds for
+# duty ~0.252-0.268 only. tests/simulation/test_calibration.py pins the envelope. A `batch_conn_duty` param overrides it.
 BATCH_CONN_DUTY = 0.26
 
 
