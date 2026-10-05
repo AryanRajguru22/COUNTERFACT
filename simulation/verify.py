@@ -33,8 +33,8 @@ def verify(execution: ExecutionResult, model: SystemModel, seed: int) -> Verific
     checks = [
         VerificationCheck(name="breach minutes", expected=f"<= {slo.max_breach_minutes}",
                           observed=str(result.breach_minutes), passed=result.breach_minutes <= slo.max_breach_minutes),
-        VerificationCheck(name="peak error rate", expected=f"<= {slo.max_error_rate}",
-                          observed=str(result.peak_error_rate), passed=result.peak_error_rate <= slo.max_error_rate),
+        VerificationCheck(name="peak error rate", expected=f"<= {slo.max_error_rate:.1%}",
+                          observed=f"{result.peak_error_rate:.1%}", passed=result.peak_error_rate <= slo.max_error_rate),
         stress,
     ]
     return VerificationResult(intervention_id=execution.intervention_id, passed=all(c.passed for c in checks),

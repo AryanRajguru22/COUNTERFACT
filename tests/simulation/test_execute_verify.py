@@ -124,7 +124,8 @@ def test_i3_is_reported_as_reducing_but_not_preventing_the_breach():
     result = _verify("I3")
     assert not result.passed and not result.stress_test_passed
     assert _check(result, "breach minutes").observed == "20"  # down from 22, still above the SLO
-    assert float(_check(result, "peak error rate").observed) == pytest.approx(0.189, abs=0.001)
+    peak = _check(result, "peak error rate")
+    assert (peak.expected, peak.observed) == ("<= 5.0%", "18.9%")  # presentation only: no raw float in the text
 
 
 def test_i5_rollback_fails_like_the_baseline():
