@@ -76,7 +76,7 @@ The happy path takes 1 to 2 minutes. Everything runs in Replay mode: no network,
 **12 and 13. Execute and verify**
 - ACTION: Wait about 4 s; the view moves to **Execution & Verification** by itself.
 - SAY: "It executes, then verifies: it replays the incident on the changed system, then again with 20% more demand."
-- IMPORTANT: **VERIFIED - PASSED**. All three checks pass: breach minutes 0, peak error rate 0, and 0 breach minutes at +20% demand.
+- IMPORTANT: **VERIFIED - PASSED**. All three checks pass: breach minutes 0, peak error rate 0.0% (SLO 5.0%), and 0 breach minutes at +20% demand.
 
 **End here:** the investigation is *Resolved*. If you are not doing the replan beat, stop on this screen.
 
@@ -92,7 +92,7 @@ Use this on a fresh run, before approving I1. It adds about 30 s.
 **R2. Verification fails and the agent replans**
 - ACTION: Wait a few seconds; the page returns to the Gate.
 - SAY: "Verification fails, so the agent doesn't stop. It drops I3, re-simulates the rest and re-ranks."
-- IMPORTANT: The banner "Attempt 1 of 3: I3 failed verification" with its failing checks (breach minutes 20, peak 0.189, 27 breach minutes at +20% demand), and "4 options remain".
+- IMPORTANT: The banner "Attempt 1 of 3: I3 failed verification" with its failing checks (breach minutes 20, peak error rate 18.9% against the 5.0% SLO, 27 breach minutes at +20% demand), and "4 options remain".
 
 **R3. Approve I1 after the replan**
 - ACTION: I1 is back as the top-ranked recommendation. Press **Approve & execute verification**.

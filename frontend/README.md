@@ -10,6 +10,8 @@ npm test             # vitest: pure derivations, formatters, report builder
 npm run build
 ```
 
+For a build served from a different origin than the backend, set `VITE_API_BASE_URL` (default `/api`) at build time; see the Deployment section of the root README.
+
 Start the backend from the repository root first: `python -m uvicorn backend.main:app --port 8000`.
 
 ## Layout

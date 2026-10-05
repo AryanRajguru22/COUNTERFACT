@@ -44,6 +44,42 @@ To run the tests, use `pytest -q` from the repo root, and `npm test`, `npm run t
 
 Configuration lives in `.env` (copy `.env.example`). `LLM_MODE=replay` is the default and needs no network or key. `LLM_MODE=live` needs `LLM_BASE_URL` and `LLM_MODEL`; without them the run falls back to replay. `STEP_DELAY_MS` (default 700) paces the agent so the UI can show progress.
 
+## Deployment
+
+There is no database and no build step for the backend. Investigations live in the memory of one process, so run **exactly one backend process** (one uvicorn worker, no autoscaling to several instances) and keep it running between the page load and the end of a demo. No LLM key is needed: the default replay mode runs the whole demo offline. Hosting platform is not prescribed.
+
+**Backend** (Python 3.11+), from the repo root:
+
+```bash
+pip install -r requirements.txt
+uvicorn backend.main:app --host 0.0.0.0 --port 8000      # use the platform's $PORT if it sets one
+```
+
+Health check: `GET /api/health` returns `{"ok": true, "llm_mode": "replay"}`.
+
+**Frontend**, from `frontend/` (Node 20+):
+
+```bash
+npm ci
+npm run build        # static files in frontend/dist, served by any static host
+```
+
+The frontend calls the API on a relative `/api` by default. Pick one of these:
+
+1. **Same origin (simplest):** make the host forward `/api/*` to the backend, as `npm run dev` does through Vite's proxy. No configuration needed.
+2. **Separate origins:** build with the backend's public URL, `VITE_API_BASE_URL=https://<backend-host>/api npm run build`, and start the backend with `CORS_ORIGINS=https://<frontend-host>`. `CORS_ORIGINS` is comma separated; `http://localhost:5173` is always allowed.
+
+The frontend uses hash routing (`#/<investigation id>/<view>`), so the static host needs no rewrite rules.
+
+| Variable | Where | Needed | Purpose |
+| --- | --- | --- | --- |
+| `VITE_API_BASE_URL` | frontend build | only for separate origins | API base URL, default `/api` |
+| `CORS_ORIGINS` | backend | only for separate origins | allowed browser origins |
+| `LLM_MODE`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | backend | no | live narration; without them the run falls back to replay |
+| `STEP_DELAY_MS` | backend | no | pacing of the agent, default 700 (about 27 s to the Gate) |
+
+Never commit `.env`; set variables in the host's environment instead.
+
 ## Ownership
 
 | Directory | Owner |

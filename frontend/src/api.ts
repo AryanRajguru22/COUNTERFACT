@@ -1,4 +1,5 @@
-// Typed client for the FastAPI backend. Vite proxies /api to http://127.0.0.1:8000.
+// Typed client for the FastAPI backend. In dev, Vite proxies /api to http://127.0.0.1:8000. For a build served from a
+// different origin than the backend, set VITE_API_BASE_URL at build time (e.g. https://api.example.com/api).
 import type {
   Approval,
   CreateInvestigationResponse,
@@ -10,6 +11,8 @@ import type {
   SimulationResult,
   SystemModel,
 } from "./types";
+
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "/api").replace(/\/+$/, "");
 
 /** Any failed call. `status` is 0 when the backend could not be reached at all. */
 export class ApiError extends Error {
@@ -49,10 +52,10 @@ function detailOf(body: string): string | null {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
-  const label = `${method} /api${path}`;
+  const label = `${method} ${API_BASE}${path}`;
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: { "Content-Type": "application/json", ...init?.headers },
     });
