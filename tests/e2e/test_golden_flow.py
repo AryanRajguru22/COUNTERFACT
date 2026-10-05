@@ -1,4 +1,4 @@
-"""Golden end-to-end (stub level): Investigate -> awaiting_approval -> approve -> resolved."""
+"""Golden end-to-end: Investigate -> awaiting_approval -> approve -> resolved."""
 
 import time
 

@@ -11,7 +11,7 @@ from typing import Callable
 
 import evidence
 import simulation
-from contracts.models import Incident
+from contracts.models import Incident, MetricSeries
 from data import loader
 
 
@@ -21,6 +21,11 @@ def list_incidents() -> list[Incident]:
 
 def get_incident(incident_id: str) -> Incident:
     return loader.load_incident(incident_id)
+
+
+def get_metrics(incident_id: str) -> list[MetricSeries]:
+    """Observed telemetry for an incident, as the fixture records it (read-only; the UI charts it)."""
+    return loader.load_metrics(incident_id)
 
 
 class FixtureError(Exception):
