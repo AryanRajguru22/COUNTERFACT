@@ -365,6 +365,8 @@ Serve `frontend/dist/` from any static host (it uses hash routing, so no rewrite
 
 Health check: `GET /api/health` returns `{"ok": true, "llm_mode": "replay"}`.
 
+**Docker:** `docker compose up -d --build` runs Option A in two containers: nginx serves the build and proxies `/api` to a single uvicorn process. It listens on `127.0.0.1:8100` (override with `COUNTERFACT_PORT`), so put a reverse proxy or tunnel in front of it.
+
 ---
 
 ## Judge demo: from failure to prevention
