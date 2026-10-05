@@ -37,7 +37,7 @@ def _effect(e: Event) -> str:
     if a.get("metric") == "checkout_5xx_rate" and a.get("value", 0) >= 0.05:
         return f"Retries amplify the load; checkout 5xx peaks at {a['value']:.0%}"
     if a.get("metric") == "checkout_5xx_rate":
-        return f"Error rate returns to baseline ({a.get('value', 0):.1%})"
+        return f"Error rate falls back under the SLO ({a.get('value', 0):.1%})"
     return e.summary
 
 

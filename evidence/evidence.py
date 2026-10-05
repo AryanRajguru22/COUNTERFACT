@@ -146,8 +146,8 @@ def _capacity_shortfall(d: _Data) -> _Finding | None:
     short = need > after
     return _Finding(
         "config_diff",
-        f"{cut['id']} cut {cut['change']['key']} from {before} to {after} (approval: {cut['approval']}; "
-        f"capacity review: {'yes' if cut.get('capacity_review') else 'none'}). "
+        f"{cut['id']} cut {cut['change']['key']} from {before} to {after}. Approval: {cut['approval']}; "
+        f"capacity review: {'yes' if cut.get('capacity_review') else 'none'}. "
         f"Checkout alone needs ~{demand_conns:.1f} connections (peak {max(d.model.exogenous.demand_rps):.0f} rps x "
         f"{params['conn_hold_ms']} ms hold) and the batch job holds {batch}, so peak demand is "
         f"{need:.1f} against {after}: {'over' if short else 'under'} capacity after the cut, well under the old {before}.",
@@ -255,7 +255,7 @@ def _errors_on_both_versions(d: _Data) -> _Finding | None:
         "trace",
         "Breach-window failure rate by version in sampled traces: "
         + ", ".join(f"{v} {r:.0%}" for v, r in rates.items())
-        + (". Both versions fail at a similar rate, and the old version fails as much as the new one." if gap < 0.15
+        + (". Both versions fail at a similar rate, so the failures do not depend on the code version." if gap < 0.15
            else ". The versions fail at clearly different rates."),
         d.ids(d.event(lambda e: e.kind == "deploy" and not e.attributes.get("rollback")),
               d.event(lambda e: e.attributes.get("rollback"))),
