@@ -1,13 +1,21 @@
 """Intervention catalogue. Owner: Goyal.
 
-FOUNDATION STUB: returns the fixed INC-2041 catalogue (I1-I5) for an H1 root
-cause. The signature is frozen; interventions come from a catalogue, never
-invented by the LLM.
+Interventions come from this fixed catalogue and are never invented by the LLM. The signature is frozen.
+
+`generate_interventions` keeps the entries that address the root cause's causal chain:
+- `block_event` and `shift_event` address it when their target event is in the chain.
+- `set_param` and `cap_param` address it when the chain runs through modelled state, i.e. some chain event is
+  a `param_change` in the system model. Every param of the pool model can then change the outcome.
+- `rollback` entries are controls. They are simulated next to any real fix, because rolling back the latest
+  change is the usual first response and the lab has to show whether it would have helped (docs/DEMO.md step 5).
+A root cause that no entry addresses gets an empty list. Catalogue order is kept.
 """
 
 from __future__ import annotations
 
 from contracts.models import Intervention, InterventionAction, RootCause, SystemModel
+
+CONTROL_CATEGORIES = frozenset({"rollback"})
 
 CATALOGUE: list[Intervention] = [
     Intervention(id="I1", title="Revert pool size to 50", category="config",
@@ -34,7 +42,18 @@ CATALOGUE: list[Intervention] = [
 
 
 def generate_interventions(root_cause: RootCause, model: SystemModel) -> list[Intervention]:
-    return [i.model_copy(deep=True) for i in CATALOGUE]
+    chain = {link.event_id for link in root_cause.causal_chain}
+    through_state = any(change.event_id in chain for change in model.param_changes)
+    fixes = {i.id for i in CATALOGUE if _addresses(i, chain, through_state)}
+    if not fixes:
+        return []
+    return [i.model_copy(deep=True) for i in CATALOGUE if i.id in fixes or i.category in CONTROL_CATEGORIES]
+
+
+def _addresses(intervention: Intervention, chain: set[str], through_state: bool) -> bool:
+    if intervention.action.op in ("block_event", "shift_event"):
+        return intervention.action.target in chain
+    return through_state
 
 
 def get_intervention(intervention_id: str) -> Intervention:
