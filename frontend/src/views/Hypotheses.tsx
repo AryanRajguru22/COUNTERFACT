@@ -25,7 +25,7 @@ export default function Hypotheses({ inv, nav }: { inv: Investigation; nav: Nav 
         title="Competing Hypotheses"
         subtitle={`${inv.hypotheses.length} candidate failure mechanisms weighed against the evidence${testing ? "; verdicts are still landing." : "."}`}
       >
-        <div className="flex items-center gap-space-md rounded-lg bg-surface-container-lowest p-1.5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-space-md rounded-lg bg-surface-container-lowest p-1.5 shadow-sm">
           <Stat dot="bg-secondary" value={counts.confirmed} label="Confirmed" />
           <Stat dot="bg-error" value={counts.rejected} label="Rejected" />
           {counts.open > 0 && <Stat dot="bg-tertiary animate-pulse" value={counts.open} label="Open" />}

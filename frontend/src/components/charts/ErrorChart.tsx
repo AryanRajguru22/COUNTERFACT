@@ -136,9 +136,14 @@ export default function ErrorChart({
     const every = minutes > 90 ? 20 : 10;
     const ticks: number[] = [];
     for (let t = 0; t < minutes; t += every) ticks.push(t);
-    if (ticks[ticks.length - 1] !== last) ticks.push(last);
+    if (ticks[ticks.length - 1] !== last) {
+      // Keep the final label from colliding with the one before it on narrow charts.
+      const pxPerMinute = last > 0 ? plotW / last : 0;
+      if (ticks.length > 1 && (last - ticks[ticks.length - 1]) * pxPerMinute < 44) ticks.pop();
+      ticks.push(last);
+    }
     return ticks;
-  }, [minutes, last]);
+  }, [minutes, last, plotW]);
 
   const rows = useMemo(() => markerRows(markers, plotW / last), [markers, plotW, last]);
 

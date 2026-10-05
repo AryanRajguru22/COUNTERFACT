@@ -103,8 +103,8 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
   const label = selectedIds.length ? selectedIds.join(" + ") : "—";
   const series: ChartSeries[] = [
     ...(observed ? [{ id: "obs", label: "Observed telemetry", values: observed.points.map((p) => p.value), color: "#869397", dashed: true, width: 1.2, opacity: 0.6 }] : []),
-    { id: "base", label: "Actual (no fix)", values: baseErr, color: "#ffb4ab", area: true, width: 2.4 },
-    ...(cfErr.length ? [{ id: "cf", label: `Counterfactual ${label}`, values: cfErr, color, dashed: outcome !== "no_effect", width: 2.6, area: outcome !== "no_effect" }] : []),
+    { id: "base", label: "Simulated baseline (no fix)", values: baseErr, color: "#ffb4ab", area: true, width: 2.4 },
+    ...(cfErr.length ? [{ id: "cf", label: `Counterfactual simulation ${label}`, values: cfErr, color, dashed: outcome !== "no_effect", width: 2.6, area: outcome !== "no_effect" }] : []),
   ];
 
   if (rows.length === 0 || !baseline) {
@@ -218,9 +218,10 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
             <span className="font-mono-metric-lg !text-[14px] uppercase text-primary drop-shadow-[0_0_8px_rgba(76,215,246,0.4)]">
               {selectedIds.length > 1 ? `Combination ${label}` : `Intervention ${label}`}: {selectedRows.map((r) => r.intervention.title).join(" + ")}
             </span>
-            <div className="flex items-center gap-space-lg font-mono-data-compact">
-              <span className="flex items-center gap-1.5 text-on-surface"><span className="h-0.5 w-3 bg-error shadow-[0_0_6px_#ffb4ab]" />Actual reality</span>
-              <span className="flex items-center gap-1.5 font-semibold" style={{ color }}><span className="h-0.5 w-3 border-t-2 border-dashed" style={{ borderColor: color }} />Counterfactual</span>
+            <div className="flex flex-wrap items-center gap-x-space-lg gap-y-1 font-mono-data-compact">
+              {observed && <span className="flex items-center gap-1.5 text-outline"><span className="h-0.5 w-3 border-t border-dashed border-outline" />Observed telemetry</span>}
+              <span className="flex items-center gap-1.5 text-on-surface"><span className="h-0.5 w-3 bg-error shadow-[0_0_6px_#ffb4ab]" />Simulated baseline (no fix)</span>
+              <span className="flex items-center gap-1.5 font-semibold" style={{ color }}><span className="h-0.5 w-3 border-t-2 border-dashed" style={{ borderColor: color }} />Counterfactual simulation</span>
             </div>
           </div>
 
@@ -229,7 +230,7 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
               <div className="skeleton h-[300px]" />
             ) : (
               <ErrorChart
-                ariaLabel={`Error rate: actual versus counterfactual ${label}`}
+                ariaLabel={`Error rate: simulated baseline versus counterfactual simulation ${label}`}
                 series={series}
                 slo={slo}
                 minutes={minutes}
@@ -265,20 +266,20 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
             {at !== null && simulation ? (
               <div className="flex items-center gap-space-xl font-mono-data-compact tabular-nums" aria-live="off">
                 <span className="text-outline">{minuteLabel(inv.incident.window.start, at)} UTC</span>
-                <span className="text-error">actual {pct(baseErr[at] ?? 0)}</span>
-                <span style={{ color }}>cf {pct(cfErr[at] ?? 0)}</span>
+                <span className="text-error">baseline {pct(baseErr[at] ?? 0)}</span>
+                <span style={{ color }}>counterfactual {pct(cfErr[at] ?? 0)}</span>
                 {(baseErr[at] ?? 0) > slo && (cfErr[at] ?? 0) <= slo && <Badge tone="secondary">breach avoided</Badge>}
                 {(baseErr[at] ?? 0) > slo && (cfErr[at] ?? 0) > slo && <Badge tone="error">still breaching</Badge>}
               </div>
             ) : (
-              <span className="font-mono-data-compact text-outline">Press replay to watch history unfold against the counterfactual.</span>
+              <span className="font-mono-data-compact text-outline">Press replay to step through the simulated baseline and the counterfactual.</span>
             )}
           </div>
 
           {simError && <p role="alert" className="font-body-sm text-error">Could not simulate {label}: {simError}</p>}
 
           <div className="grid grid-cols-1 gap-space-md rounded border border-white/10 bg-[#08090c]/90 p-space-lg shadow-inner sm:grid-cols-3">
-            <Metric label="Simulated peak error" now={simulation ? pct(simulation.peak_error_rate) : "—"} was={pct(baseline.peak_error_rate)} sub={simulation ? `${simulation.peak_error_rate <= baseline.peak_error_rate ? "−" : "+"}${pct(Math.abs(baseline.peak_error_rate - simulation.peak_error_rate))} vs actual` : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
+            <Metric label="Simulated peak error" now={simulation ? pct(simulation.peak_error_rate) : "—"} was={pct(baseline.peak_error_rate)} sub={simulation ? `${simulation.peak_error_rate <= baseline.peak_error_rate ? "−" : "+"}${pct(Math.abs(baseline.peak_error_rate - simulation.peak_error_rate))} vs simulated baseline` : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
             <Metric label="Breach minutes" now={simulation ? `${simulation.breach_minutes} min` : "—"} was={`${baseline.breach_minutes} min`} sub={simulation ? (simulation.breach_minutes === 0 ? "Outage eradicated" : simulation.breach_minutes < baseline.breach_minutes ? `${baseline.breach_minutes - simulation.breach_minutes} min avoided` : "Identical outage duration") : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
             <div className="flex flex-col">
               <Label>Outcome</Label>
@@ -286,7 +287,7 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
                 {simulation ? <Badge tone={OUTCOME_TONE[outcome]} className="font-bold">{simulation.prevented ? "Outage prevented" : outcome === "partial" ? "Not prevented (improved)" : "No effect"}</Badge> : <Badge tone="muted">Simulating…</Badge>}
               </div>
               <span className="mt-1 font-mono-data-compact text-on-surface-variant">
-                {simulation ? (simulation.prevented ? "Stays under the SLO for the whole window." : outcome === "partial" ? "Shortens the breach but the SLO is still crossed." : "The breach plays out exactly as it did.") : ""}
+                {simulation ? (simulation.prevented ? "Stays under the SLO for the whole window." : outcome === "partial" ? "Shortens the breach but the SLO is still crossed." : "The simulated breach is unchanged.") : ""}
               </span>
             </div>
           </div>
@@ -359,12 +360,12 @@ function MiniSeries({ title, baseline, cf, color, minutes, windowStart, at, form
         )}
       </div>
       <ErrorChart
-        ariaLabel={`${title}: actual versus counterfactual`}
+        ariaLabel={`${title}: simulated baseline versus counterfactual simulation`}
         unit="number"
         format={format}
         series={[
-          { id: "base", label: "Actual", values: baseline, color: "#ffb4ab", width: 1.8 },
-          { id: "cf", label: "Counterfactual", values: cf, color, dashed: true, width: 1.8 },
+          { id: "base", label: "Simulated baseline", values: baseline, color: "#ffb4ab", width: 1.8 },
+          { id: "cf", label: "Counterfactual simulation", values: cf, color, dashed: true, width: 1.8 },
         ]}
         minutes={minutes}
         windowStart={windowStart}

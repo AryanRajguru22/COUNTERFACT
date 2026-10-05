@@ -66,6 +66,7 @@ export default function AgentDrawer({ inv, open, onClose }: { inv: Investigation
     return [...filtered].reverse();
   }, [inv.steps, filter]);
 
+  const fellBack = inv.mode === "live" && inv.steps.some((step) => step.output_summary.startsWith("Live LLM unavailable"));
   const running = inv.stage !== "resolved" && inv.stage !== "failed" && inv.stage !== "awaiting_approval";
 
   return (
@@ -112,7 +113,7 @@ export default function AgentDrawer({ inv, open, onClose }: { inv: Investigation
       </ol>
       <div className="flex items-center justify-between border-t border-white/10 bg-[#08090c]/80 p-space-lg font-mono-label-caps uppercase text-outline">
         <span>
-          Mode: {inv.mode} · {STAGE_LABEL[inv.stage]}
+          Mode: {inv.mode}{fellBack ? " (replay fallback)" : ""} · {STAGE_LABEL[inv.stage]}
         </span>
         <span className={cx("flex items-center gap-1", inv.stage === "failed" ? "text-error" : running ? "text-tertiary" : "text-secondary")}>
           <span className={cx("h-1.5 w-1.5 rounded-full", inv.stage === "failed" ? "bg-error" : running ? "animate-pulse bg-tertiary" : "bg-secondary")} />

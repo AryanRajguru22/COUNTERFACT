@@ -125,9 +125,9 @@ export default function Verification({ inv, nav }: { inv: Investigation; nav: Na
                 <p className="font-body-sm text-on-surface-variant">Expected {check.expected}</p>
               </div>
               <div className="inset-well flex justify-between p-space-md font-mono-data-compact text-on-surface">
-                <span>Observed: <strong className={check.passed ? "text-secondary" : "text-error"}>{check.observed}</strong></span>
-                {baseline && /breach/i.test(check.name) && <span className="text-outline">Historical: {baseline.breach_minutes} min</span>}
-                {baseline && /peak/i.test(check.name) && <span className="text-outline">Historical: {pct(baseline.peak_error_rate)}</span>}
+                <span>Simulated: <strong className={check.passed ? "text-secondary" : "text-error"}>{check.observed}</strong></span>
+                {baseline && /breach/i.test(check.name) && <span className="text-outline">Baseline: {baseline.breach_minutes} min</span>}
+                {baseline && /peak/i.test(check.name) && <span className="text-outline">Baseline: {pct(baseline.peak_error_rate)}</span>}
               </div>
             </div>
           ))}

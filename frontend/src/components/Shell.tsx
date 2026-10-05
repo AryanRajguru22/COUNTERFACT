@@ -54,7 +54,7 @@ export function Header({
     <header className="fixed inset-x-0 top-0 z-50 flex h-14 select-none items-center justify-between gap-space-md border-b border-white/10 bg-[#08090c]/80 px-space-lg shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl">
       <button type="button" onClick={onNew} className="flex items-center gap-space-md rounded text-left" aria-label="COUNTERFACT home">
         <LogoMark />
-        <div className="flex flex-col">
+        <div className="hidden flex-col sm:flex">
           <span className="font-mono-metric-lg text-headline-sm uppercase leading-none tracking-wider text-primary drop-shadow-[0_0_10px_rgba(76,215,246,0.45)]">Counterfact</span>
           <span className="mt-space-xs hidden font-mono-label-caps uppercase leading-none tracking-widest text-outline sm:block">Incident Investigation</span>
         </div>
