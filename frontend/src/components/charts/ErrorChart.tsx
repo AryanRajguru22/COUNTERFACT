@@ -133,7 +133,10 @@ export default function ErrorChart({
   }, [top, unit]);
 
   const xTicks = useMemo(() => {
-    const every = minutes > 90 ? 20 : 10;
+    // Widen the step on narrow charts so neighbouring labels never touch.
+    const pxPerMin = last > 0 ? plotW / last : 0;
+    let every = minutes > 90 ? 20 : 10;
+    while (pxPerMin > 0 && every * pxPerMin < 52 && every < 60) every *= 2;
     const ticks: number[] = [];
     for (let t = 0; t < minutes; t += every) ticks.push(t);
     if (ticks[ticks.length - 1] !== last) {

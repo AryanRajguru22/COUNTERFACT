@@ -279,7 +279,7 @@ export default function Lab({ inv, data, nav }: { inv: Investigation; data: Inci
           {simError && <p role="alert" className="font-body-sm text-error">Could not simulate {label}: {simError}</p>}
 
           <div className="grid grid-cols-1 gap-space-md rounded border border-white/10 bg-[#08090c]/90 p-space-lg shadow-inner sm:grid-cols-3">
-            <Metric label="Simulated peak error" now={simulation ? pct(simulation.peak_error_rate) : "—"} was={pct(baseline.peak_error_rate)} sub={simulation ? `${simulation.peak_error_rate <= baseline.peak_error_rate ? "−" : "+"}${pct(Math.abs(baseline.peak_error_rate - simulation.peak_error_rate))} vs simulated baseline` : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
+            <Metric label="Simulated peak error" now={simulation ? pct(simulation.peak_error_rate) : "—"} was={pct(baseline.peak_error_rate)} sub={simulation ? (simulation.peak_error_rate === baseline.peak_error_rate ? "same as simulated baseline" : `${simulation.peak_error_rate < baseline.peak_error_rate ? "−" : "+"}${pct(Math.abs(baseline.peak_error_rate - simulation.peak_error_rate))} vs simulated baseline`) : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
             <Metric label="Breach minutes" now={simulation ? `${simulation.breach_minutes} min` : "—"} was={`${baseline.breach_minutes} min`} sub={simulation ? (simulation.breach_minutes === 0 ? "Outage eradicated" : simulation.breach_minutes < baseline.breach_minutes ? `${baseline.breach_minutes - simulation.breach_minutes} min avoided` : "Identical outage duration") : "…"} tone={simulation ? OUTCOME_TONE[outcome] : "muted"} />
             <div className="flex flex-col">
               <Label>Outcome</Label>

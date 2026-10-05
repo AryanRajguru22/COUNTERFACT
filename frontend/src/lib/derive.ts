@@ -290,6 +290,19 @@ export function outcomeOf(sim: SimulationResult | undefined, baseline: Simulatio
   return sim.breach_minutes < base ? "partial" : "no_effect";
 }
 
+/**
+ * The backend keeps the last execution and verification after a later approval decision, so they can describe an
+ * older attempt. They are current only while the latest approval is an approval of that same intervention; a newer
+ * rejection or a run in flight supersedes them (a replan drops an intervention, so it is never approved twice).
+ */
+export function currentRun(inv: Investigation): { execution: Investigation["execution"]; verification: Investigation["verification"] } {
+  const approved = inv.approval?.decision === "approved" ? inv.approval.intervention_id : null;
+  return {
+    execution: inv.execution && inv.execution.intervention_id === approved ? inv.execution : null,
+    verification: inv.verification && inv.verification.intervention_id === approved ? inv.verification : null,
+  };
+}
+
 /** Dropped from the ranking by a replan (rejected or failed verification) but still in the catalogue. */
 export function droppedInterventionIds(inv: Investigation): string[] {
   const ranked = new Set(inv.ranking.map((r) => r.intervention_id));

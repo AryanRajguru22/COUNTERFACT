@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ApiError } from "../api";
 import { Badge, Button, Icon, Label, Notice, Panel, Pending, TONE_TEXT, cx, type Tone } from "../components/ui";
-import { baselineOf, describeAction, droppedInterventionIds, interventionRows, interventionTitle } from "../lib/derive";
+import { baselineOf, currentRun, describeAction, droppedInterventionIds, interventionRows, interventionTitle } from "../lib/derive";
 import { effort } from "../lib/format";
 import type { Nav } from "../lib/nav";
 import type { Approval, Decision, Investigation } from "../types";
@@ -41,7 +41,8 @@ export default function Gate({
   const selected = rows.find((r) => r.intervention.id === selectedId) ?? rows[0];
   const top = recommendation ? rows.find((r) => r.intervention.id === recommendation.intervention_id) : undefined;
   const isRecommended = selected.intervention.id === recommendation?.intervention_id;
-  const lastVerification = inv.verification && !inv.verification.passed ? inv.verification : null;
+  const { verification: current } = currentRun(inv);
+  const lastVerification = current && !current.passed ? current : null;
   const noteMissing = note.trim() === "";
   const stopped = inv.stage === "failed";
 

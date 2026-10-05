@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   breachWindow,
+  currentRun,
   estimatedFailedRequests,
   eventClass,
   interventionRows,
@@ -145,5 +146,28 @@ describe("report", () => {
     expect(text).toContain("ana approved **I1**");
     expect(text).toContain("## Verification: PASSED");
     expect(text).not.toContain("Root cause");
+  });
+});
+
+describe("currentRun", () => {
+  const failedI3 = { intervention_id: "I3", passed: false, stress_test_passed: false, checks: [{ name: "breach minutes", expected: "<= 0", observed: "9", passed: false }] };
+  const execI3 = { intervention_id: "I3", applied_changes: [], status: "applied" as const };
+  const approval = (id: string, decision: "approved" | "rejected") => ({ intervention_id: id, decision, approver: "ana", note: decision === "rejected" ? "too risky" : "", at: null });
+
+  it("keeps a verification failure while it is the latest event", () => {
+    const run = currentRun(investigation({ approval: approval("I3", "approved"), execution: execI3, verification: failedI3 }));
+    expect(run.verification?.intervention_id).toBe("I3");
+    expect(run.execution?.intervention_id).toBe("I3");
+  });
+
+  it("drops an older failure once a later rejection or approval supersedes it", () => {
+    expect(currentRun(investigation({ approval: approval("I1", "rejected"), execution: execI3, verification: failedI3 })).verification).toBeNull();
+    const running = currentRun(investigation({ stage: "executing", approval: approval("I1", "approved"), execution: execI3, verification: failedI3 }));
+    expect(running.verification).toBeNull();
+    expect(running.execution).toBeNull();
+  });
+
+  it("returns nothing before any approval", () => {
+    expect(currentRun(investigation()).verification).toBeNull();
   });
 });

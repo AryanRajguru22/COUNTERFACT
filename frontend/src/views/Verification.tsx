@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Badge, Button, Icon, Label, Notice, Panel, Pending, cx } from "../components/ui";
-import { baselineOf, describeAction, interventionTitle, simulationFor } from "../lib/derive";
+import { baselineOf, currentRun, describeAction, interventionTitle, simulationFor } from "../lib/derive";
 import { downloadText } from "../lib/download";
 import { humanize, pct } from "../lib/format";
 import type { Nav } from "../lib/nav";
@@ -15,7 +15,7 @@ const PHASES = [
 
 export default function Verification({ inv, nav }: { inv: Investigation; nav: Nav }) {
   const [copied, setCopied] = useState(false);
-  const { execution, verification } = inv;
+  const { execution, verification } = currentRun(inv);
   const running = inv.stage === "executing" || inv.stage === "verifying";
 
   if (!execution && !running) {
