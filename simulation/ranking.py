@@ -1,12 +1,14 @@
 """Intervention ranking and replanning. Owner: Goyal.
 
-FOUNDATION STUB scoring: `prevented` is a hard gate, then
-score = breach minutes avoided - risk penalty - effort penalty.
+Scoring: `prevented` is a hard gate, then score = breach minutes avoided - risk penalty - effort penalty,
+with ties broken by intervention id. `replan` re-simulates the remaining candidates and ranks them again.
 """
 
 from __future__ import annotations
 
 from contracts.models import Intervention, RankedIntervention, SimulationResult, SystemModel, VerificationResult
+from simulation.interventions import get_intervention
+from simulation.simulator import simulate
 
 RISK_PENALTY = {"low": 0.0, "med": 3.0, "high": 8.0}
 EFFORT_PENALTY_PER_HOUR = 0.5
@@ -40,5 +42,17 @@ def rank(results: list[SimulationResult], interventions: list[Intervention]) -> 
 
 
 def replan(failed: VerificationResult, ranking: list[RankedIntervention], model: SystemModel) -> list[RankedIntervention]:
-    remaining = [r for r in ranking if r.intervention_id != failed.intervention_id]
-    return [r.model_copy(update={"rank": n}) for n, r in enumerate(remaining, start=1)]
+    """Re-simulate and re-rank what is left after `failed`, against `model`.
+
+    The candidates are the interventions still in `ranking`: the root cause already filtered them, and earlier
+    replans already dropped earlier failures. The failed one is excluded. Each candidate is simulated again
+    from the catalogue against `model`, next to a fresh baseline, and ranked with `rank`, so stale scores are
+    never reused. A failed verification ran on an in-memory copy, so `model` is still the incident's state
+    and the failed change is not applied underneath the candidates.
+    """
+    remaining = dict.fromkeys(r.intervention_id for r in ranking if r.intervention_id != failed.intervention_id)
+    candidates = [get_intervention(intervention_id) for intervention_id in remaining]
+    if not candidates:
+        return []
+    results = [simulate(model, [])] + [simulate(model, [candidate]) for candidate in candidates]
+    return rank(results, candidates)
